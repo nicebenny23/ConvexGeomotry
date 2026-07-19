@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="ConvexGeomotry/ConvexGeomotry.vcxproj" Id="921e30ea-293f-4770-88b9-8e028f7510f9" />
+</Solution>
