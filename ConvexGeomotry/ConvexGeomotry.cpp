@@ -314,30 +314,6 @@ struct Vrep {
         points.push_back(point);
     }
     std::vector<Vector> points;
-    std::pair<Vrep, Vrep> passing_failing(HalfSpace space) {
-        Vrep passes;
-        Vrep fails;
-        HalfSpace neg_space = -space;
-        for (const Vector& v : points)
-        {
-            if (space.suffieciently_close(v))
-            {
-                passes.add(v);
-                fails.add(v);
-            }
-            else {
-                if (space.contains(v))
-                {
-                    passes.add(v);
-                }
-                if (neg_space.contains(v))
-                {
-                    fails.add(v);
-                }
-            }
-        }
-        return std::pair<Vrep, Vrep>(passes, fails);
-    }
     bool is_supporting_hyperplane(HalfSpace space) {
         size_t passes=0;
         size_t fails=0;
@@ -361,13 +337,13 @@ struct Vrep {
                 return false;
             }
         }
-        if (size()-passes-fails!=dim())
-        {
-            int l = 3;
-        }
         return true;
     }
     void hull() {
+        if (size()<=1+dim())
+        {
+            return;
+        }
             std::unordered_set<Vector > point_list;
             std::vector<std::vector<size_t>> combines{ combinations(points.size(), dim() ) };
             for (const std::vector<size_t>& indices: combines)
@@ -381,10 +357,6 @@ struct Vrep {
                 {
                     for (size_t i = 0; i <vertices.size(); i++)
                     {
-                        if (!space.suffieciently_close(vertices[i]))
-                        {
-                            int l = 3;
-                        }
                         point_list.emplace(vertices[i]);
                     }
                 }
@@ -521,13 +493,14 @@ struct SupportFunction {
         size_t count = 0;
         Frep rep = f_rep(cont);
         Vrep points;
-        for (size_t i = 0; i < evals; i++)
+        
+        while(points.size()<evals)
         {
             Vector point = eval_box.random_pnt();
             if (rep.contains(point))
             {
                 points.add(point);
-
+                points.hull();
             }
         }
         return points.volume();
@@ -546,7 +519,7 @@ struct Sphere:SupportFunction{
 };
 int main()
 {
-    std::cout << Sphere().volume(1000,1000);
+    std::cout << Sphere().volume(90,1000);
 }
 
 // Run program: Ctrl + F5 or Debug > Start Without Debugging menu
