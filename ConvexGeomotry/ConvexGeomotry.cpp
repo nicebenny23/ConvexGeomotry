@@ -3,532 +3,1537 @@
 #include <vector>
 #include <iostream>
 #pragma once
-
+#include <format>
 #include <cmath>
 #include <cstddef>
 #include <stdexcept>
 #include <vector>
 #include <optional>
+#include <algorithm> 
+#include <flat_set>
+#include <ranges>
 #include "random.h"
 #include <unordered_set>
+template<typename ...Args>
+void print(std::format_string<Args...> fmt,Args&&... args) {
+	std::cout << std::format(fmt, std::forward<Args>(args)...)<<'\n';
+}
 struct Vector {
-    std::vector<double> coords;
 
-    Vector() = default;
+	std::vector<double> coords;
 
-    explicit Vector(const std::vector<double>& v)
-        : coords(v) {
-    }
-    explicit Vector(std::vector<double>&& v)
-        : coords(std::move(v)) {
-    }
+	Vector() = default;
 
-    explicit Vector(size_t n)
-        : coords(n, 0.0) {
-    }
+	explicit Vector(const std::vector<double>& v)
+		: coords(v) {
+	}
+	explicit Vector(std::vector<double>&& v)
+		: coords(std::move(v)) {
+	}
 
-    size_t dim() const {
-        return coords.size();
-    }
+	explicit Vector(size_t n)
+		: coords(n, 0.0) {
+	}
 
-    static void check_dimensions(const Vector& a, const Vector& b) {
-        if (a.dim() != b.dim())
-            throw std::invalid_argument("Point dimensions do not match.");
-    }
+	size_t dim() const {
+		return coords.size();
+	}
 
-    static double dot_product(const Vector& a, const Vector& b) {
-        check_dimensions(a, b);
+	static void check_dimensions(const Vector& a, const Vector& b) {
+		if (a.dim() != b.dim())
+			throw std::invalid_argument("Point dimensions do not match.");
+	}
 
-        double sum = 0.0;
-        for (size_t i = 0; i < a.dim(); i++)
-            sum += a[i] * b[i];
+	static double dot_product(const Vector& a, const Vector& b) {
+		check_dimensions(a, b);
 
-        return sum;
-    }
+		double sum = 0.0;
+		for (size_t i = 0; i < a.dim(); i++)
+			sum += a[i] * b[i];
 
-    double magnitude() const {
-        return std::sqrt(dot_product(*this, *this));
-    }
-    Vector normal() const {
-        return *this / magnitude();
-    }
-    Vector& normalize() {
-        *this /= magnitude();
-        return *this;
-    }
-    double& operator[](size_t i) {
-        return coords[i];
-    }
+		return sum;
+	}
+	//one when perfectly aligned
+	static double aligment0to1(const Vector& a, const Vector& b) {
+		return (dot_product(a, b) + 1) / 2.f;
 
-    const double& operator[](size_t i) const {
-        return coords[i];
-    }
-    
-    Vector(const Vector&) = default;
+	}static double distance(const Vector& a, const Vector& b) {
+		return (a - b).magnitude();
 
-    Vector(Vector&&) = default;
-    Vector operator+(const Vector& other) const {
-        check_dimensions(*this, other);
+	}
+	double magnitude() const {
+		return std::sqrt(dot_product(*this, *this));
+	}
+	Vector normal() const {
+		if (dim()==0)
+		{
+			return *this;
+		}
+		return *this / magnitude();
+	}
+	Vector& normalize() {
+		*this /= magnitude();
+		return *this;
+	}
+	double& operator[](size_t i) {
+		return coords[i];
+	}
 
-        Vector result(dim());
-        for (size_t i = 0; i < dim(); i++)
-            result[i] = coords[i] + other[i];
+	const double& operator[](size_t i) const {
+		return coords[i];
+	}
 
-        return result;
-    }
- 
-    Vector& operator=(const Vector& other) {
-        check_dimensions(*this, other);
-        coords = other.coords;
-        return *this;
-    }
-    void abs_each() {
-        for (size_t i = 0; i < dim(); i++)
-        {
-            coords[i] = std::abs(coords[i]);
-        }
-    }
-    Vector& operator=(Vector&& other) {
-        check_dimensions(*this, other);
-        coords = std::move(other.coords);
-        return *this;
-    }
-    Vector& operator+=(const Vector& other) {
-        return *this = *this + other;
-    }
+	Vector operator+(const Vector& other) const {
+		check_dimensions(*this, other);
 
-    Vector operator-() const {
-        return *this * -1.0;
-    }
+		Vector result(dim());
+		for (size_t i = 0; i < dim(); i++)
+			result[i] = coords[i] + other[i];
 
-    Vector operator-(const Vector& other) const {
-        return *this + (-other);
-    }
+		return result;
+	}
 
-    Vector& operator-=(const Vector& other) {
-        return *this = *this - other;
-    }
+	void abs_each() {
+		for (size_t i = 0; i < dim(); i++)
+		{
+			coords[i] = std::abs(coords[i]);
+		}
+	}
+	Vector& operator+=(const Vector& other) {
+		for (size_t i = 0; i < dim(); i++)
+			coords[i] += other[i];
 
-    Vector operator*(double scalar) const {
-        Vector result(dim());
+		return *this;
+	}
 
-        for (size_t i = 0; i < dim(); i++)
-            result[i] = coords[i] * scalar;
+	Vector operator-() const {
+		return *this * -1.0;
+	}
 
-        return result;
-    }
+	Vector operator-(const Vector& other) const {
+		Vector self = *this;
+		self -= other;
+		return self;
+	}
 
-    Vector& operator*=(double scalar) {
-        for (size_t i = 0; i < dim(); i++)
-            coords[i] *= scalar;
+	Vector& operator-=(const Vector& other) {
+		for (size_t i = 0; i < dim(); i++) {
+			coords[i] -= other.coords[i];
+		}
+		return *this;
+	}
 
-        return *this;
-    }
 
-    Vector operator/(double scalar) const {
-        if (scalar == 0.0)
-            throw std::invalid_argument("Division by zero.");
+	Vector operator*(double scalar) const {
+		Vector result(dim());
 
-        return *this * (1.0 / scalar);
-    }
+		for (size_t i = 0; i < dim(); i++)
+			result[i] = coords[i] * scalar;
 
-    Vector& operator/=(double scalar) {
-        return *this *= 1/ scalar;
-    }
+		return result;
+	}
 
-    bool operator==(const Vector& other) const {
-        return coords == other.coords;
-    }
+	Vector& operator*=(double scalar) {
+		for (size_t i = 0; i < dim(); i++)
+			coords[i] *= scalar;
 
-    bool operator!=(const Vector& other) const {
-        return !(*this == other);
-    }
-    static Vector random(size_t dim) {
-        std::vector<double> list;
-        for (size_t i = 0; i < dim; i++)
-        {
-            list.push_back(gaussian());
-        }
-        Vector res = Vector(std::move(list));
-        res.normalize();
-        return res;
-    }
+		return *this;
+	}
 
-    Vector project_onto_this(const Vector& projected_onto) const {
-        return normal()*Vector::dot_product(projected_onto,normal());
-    }
-};namespace std {
-    template<>
-    struct hash<Vector> {
-        size_t operator()(const Vector& v) const noexcept {
-            size_t seed = 0;
+	Vector operator/(double scalar) const {
+		if (scalar == 0.0)
+			throw std::invalid_argument("Division by zero.");
 
-            for (double x : v.coords) {
-                size_t h = std::hash<double>{}(x);
+		return *this * (1.0 / scalar);
+	}
 
-                // hash combine (boost-style)
-                seed ^= h + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-            }
+	Vector& operator/=(double scalar) {
+		return *this *= 1 / scalar;
+	}
 
-            return seed;
-        }
-    };
-#include <ostream>
+	bool operator==(const Vector& other) const {
+		return coords == other.coords;
+	}
 
-        std::ostream & operator<<(std::ostream & os, const Vector & v)
-    {
-        os << '(';
+	bool operator!=(const Vector& other) const {
+		return !(*this == other);
+	}
+	static Vector random(size_t dim) {
+		Vector v;
+		v.coords.reserve(dim);
+		for (size_t i = 0; i < dim; i++)
+		{
+			v.coords.push_back(gaussian());
+		}
+		return v.normal();
 
-        for (size_t i = 0; i < v.dim(); ++i)
-        {
-            if (i != 0)
-                os << ", ";
+	}
+	Vector project_onto_this_normalized_already(const Vector& projected_onto) const {
+		return *this * Vector::dot_product(projected_onto, *this);
+	}
+	Vector project_onto_this(const Vector& projected_onto) const {
+		return normal().project_onto_this_normalized_already(projected_onto);
+	}
 
-            os << v[i];
-        }
+};
 
-        os << ')';
-        return os;
-    }
+//<=n vectors and returns orthagonal ones with the same span
+inline std::pair<std::vector<Vector>, double> gramm_shmitt_process(std::vector<Vector> vectors) {
+	double scale = 1;
+	for (int i = 0;i < vectors.size();i++)
+	{
+		double mag = vectors[i].magnitude();
+
+		scale *= mag;
+		if (mag>=1e-8)
+		{
+			vectors[i] /= mag;
+		}
+		//modified is apperently more stable
+		for (size_t j = i+1; j < vectors.size(); j++)
+		{
+			vectors[j] -= vectors[i].project_onto_this_normalized_already(vectors[j]);
+		}
+
+	}
+	return std::pair(vectors, scale);
 }
 
+struct Span {
+	double determinant() const {
+		return gramm_shmitt_process(points).second;
+	}
+	std::vector<Vector> points;
+	size_t dim() const {
+		return points.size();
+	}
+
+	Vector to_basis(const Vector& point) const {
+		Vector pnt(dim());
+		for (size_t i = 0; i < dim(); i++)
+		{
+			double mag = points[i].magnitude();
+			pnt[i] = Vector::dot_product(points[i], (point))/mag*mag;
+		}
+		return pnt;
+	}
+};
+struct Ray {
+	Vector start;
+	Vector direction;
+	size_t dim() const {
+		return start.dim();
+	}
+	Ray(const Vector& pnt, const Vector& direction) :start(pnt), direction(direction.normal()) {
+
+	}
+	Vector normal() const {
+		return direction.normal();
+	}
+	Vector along(double dist) const {
+		return start + direction*dist;
+	}
+};
 struct HalfSpace {
-    Vector normal;
-    double bound;
-    HalfSpace(const Vector& norm, double bnd) :normal(norm), bound(bnd) {
-        bound /= norm.magnitude();
-        normal.normalize();
-    }
-    HalfSpace operator-() {
-        return HalfSpace(-normal, -bound);
-    }
-    bool contains(const Vector& other) const {
-        return Vector::dot_product(normal, other) <= bound;
-    }
-    bool suffieciently_close(const Vector& other) const {
-        return std::abs(Vector::dot_product(normal, other)- bound)<= 1e-6;
-    }
+	Vector normal;
+	double bound;
+	HalfSpace(const Vector& norm, double bnd) :normal(norm), bound(bnd) {
+		bound /= norm.magnitude();
+		normal.normalize();
+	}
+	HalfSpace translated(const Vector& p) const {
+		return HalfSpace(normal, bound + Vector::dot_product(p, normal));
+	}
+	void translate(const Vector& p) {
+		*this = translated(p);
+	}
+	HalfSpace operator-() {
+		return HalfSpace(-normal, -bound);
+	}
+	bool operator==(const HalfSpace& other) const = default;
+
+	bool operator!=(const HalfSpace& other) const = default;
+	bool contains(const Vector& other) const {
+		return contains_exactly(other)||suffieciently_close(other);
+	}
+	enum class ContainmentState {
+		boundry,
+		strongly_in,
+		strongly_out,
+	};
+	ContainmentState containment(const Vector& other) const {
+
+		double state = bound - Vector::dot_product(normal, other);
+		if (abs(state)<1e-8)
+		{
+			return ContainmentState::boundry;
+		}
+		if (state>=0)
+		{
+			return ContainmentState::strongly_in;
+		}
+		return ContainmentState::strongly_out;
+	}
+	bool contains_exactly(const Vector& other) const {
+		return Vector::dot_product(normal, other) <= bound ;
+	}
+	bool suffieciently_close(const Vector& other) const {
+		return std::abs(Vector::dot_product(normal, other) - bound) <= 1e-8;
+	}
+	Vector project_onto_plane(const Vector& other) const {
+		return other + normal * (bound - Vector::dot_product(normal, other));
+	}
+	Vector project_onto_halfspace(const Vector& other) const {
+		return other + normal * std::min(0.0,(bound - Vector::dot_product(normal, other)));
+	}
+	size_t dim() const {
+		return normal.dim();
+	}
+	double dist(const Vector& point) const {
+		return (project_onto_plane(point) - point).magnitude();
+	}
+	//negitive if in
+	double signed_dist(const Vector& pnt) const {
+		return (Vector::dot_product(normal, pnt)- bound);
+	}
+	static double simularity(const HalfSpace& a, const HalfSpace& b) {
+		double angle = Vector::aligment0to1(a.normal, b.normal);
+		double size_alignment = 1 - (std::abs(a.bound - b.bound) / std::max(abs(a.bound), abs(b.bound)));
+		return angle * size_alignment;
+
+	}
+	std::optional<double> hit_time(const Ray& ray) const {
+		double ht = dist(ray.start) / Vector::dot_product(normal, ray.direction);
+		if (ht > 0)
+		{
+			return ht;
+		}
+		return std::nullopt;
+	}
+	Span span() const {
+		if (dim() == 0)
+		{
+			return Span();
+		}
+		std::vector<Vector> points;
+		points.push_back(normal);
+
+		Vector center = project_onto_plane(Vector(dim()));
+		for (size_t i = 1; i < dim(); i++)
+		{
+			Vector unit = center;
+			unit[i] += 1;
+			points.push_back(project_onto_plane(unit) - center);
+		}
+		points = gramm_shmitt_process(points).first;
+		std::swap(points[0], points.back());
+		points.pop_back();
+		return Span{ points };
+	}
 };
-inline std::vector<Vector> gramm_shmitt_process(std::vector<Vector> vectors) {
-    for (int i =0;i<vectors.size();i++)
-    {
-        for (size_t j = 0; j<i; j++)
-        {
-            vectors[i]-=vectors[j].project_onto_this(vectors[i]);
-        }
-    }
-    return vectors;
+namespace std {
+
+	template<>
+	struct std::formatter<Vector> {
+		constexpr auto parse(std::format_parse_context& ctx) {
+			return ctx.begin();
+		}
+
+		auto format(const Vector& v, std::format_context& ctx) const {
+			auto out = ctx.out();
+			*out++ = '(';
+
+			for (size_t i = 0; i < v.dim(); i++)
+			{
+				if (i != 0)
+				{
+					*out++ = ',';
+					*out++ = ' ';
+				}
+
+				out = std::format_to(out, "{:.10}", v[i]);
+			}
+
+			*out++ = ')';
+			
+			return out;
+		}
+	};
+	template<>
+	struct std::formatter<HalfSpace> {
+		constexpr auto parse(std::format_parse_context& ctx) {
+			return ctx.begin();
+		}
+
+		auto format(const HalfSpace& v, std::format_context& ctx) const {
+			return std::format_to(ctx.out(), "(normal:{})({:.10})", v.normal, v.bound);
+		}
+	};
+	template<typename T>
+	struct std::formatter<std::vector<T>>
+	{
+		constexpr auto parse(std::format_parse_context& ctx)
+		{
+			return ctx.begin();
+		}
+
+		auto format(const std::vector<T>& vec, std::format_context& ctx) const
+		{
+			auto out = ctx.out();
+
+			out = std::format_to(out, "len({})", vec.size());
+			*out++ = '[';
+
+			for (size_t i = 0; i < vec.size(); i++)
+			{
+				if (i != 0)
+				{
+					*out++ = ',';
+					*out++ = ' ';
+				}
+
+				out = std::format_to(out, "{}", vec[i]);
+			}
+
+			*out++ = ']';
+
+			return out;
+		}
+	};
+	template<>
+	struct hash<Vector> {
+		size_t operator()(const Vector& v) const noexcept {
+			size_t seed = 0;
+
+			for (double x : v.coords) {
+				size_t h = std::hash<double>{}(x);
+
+				// hash combine (boost-style)
+				seed ^= h + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+			}
+
+			return seed;
+		}
+	};
+	template<>
+	struct hash<HalfSpace> {
+		size_t operator()(const HalfSpace& v) const noexcept {
+			size_t seed = 0;
+			seed=std::hash<Vector>()(v.normal);
+				seed ^= std::hash<double>()(v.bound) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+			return seed;
+		}
+	};
+	template<typename T>
+	struct hash<std::vector<T>> {
+		size_t operator()(const std::vector<T>& vec) const noexcept {
+			size_t seed = 0;
+
+			for (const T& v : vec) {
+				seed ^= std::hash<T>()(v)
+					+ 0x9e3779b9
+					+ (seed << 6)
+					+ (seed >> 2);
+			}
+
+			return seed;
+		}
+	};
 }
-    inline HalfSpace space_from_vectors(std::vector<Vector> vectors) {
-        std::vector<Vector> edges;
+	struct GaussianMatrix {
+		GaussianMatrix(std::vector<HalfSpace> halfspaces) {
+			for (size_t i = 0; i < halfspaces.size(); i++) { 
+				Vector next_normal = halfspaces[i].normal;
 
-        for (size_t i = 1; i < vectors.size(); i++)
-            edges.push_back(vectors[i] - vectors[0]);
+				next_normal.coords.push_back(halfspaces[i].bound);
+				rows.push_back(std::move(next_normal)); 
+			}
+		}
+		std::vector<Vector> rows;
+		std::optional<Vector> solve() {
+			for (size_t i = 0; i < rows.size(); i++)
+			{
+				size_t pivot = i;
+				double best = std::abs(rows[i][i]);
+				//partial pivot
+				for (size_t r = i; r < rows.size(); ++r)
+				{
+					double val = std::abs(rows[r][i]);
+					if (val >=best)
+					{
+						best = val;
+						pivot = r;
+					}
+				}
+				std::swap(rows[pivot], rows[i]);
+				if (abs(rows[i][i])<=1e-8)
+				{
+					return std::nullopt;
+				}
+				rows[i] /= rows[i][i];
+				Vector row = rows[i];
 
-        auto basis = gramm_shmitt_process(edges);
+				for (size_t j = i + 1; j < rows.size(); j++)
+				{
+					rows[j] -= row * rows[j][i];
+				}
+			}
+			size_t dim = rows.size();
+			Vector res(dim);
+			for (int i = dim - 1; i >= 0; i--)
+			{
+				for (size_t j = i + 1; j < dim; j++)
+				{
+					rows[i] -= rows[j] * rows[i][j];
+				}
+				res[i] = rows[i][dim];
+			}
+			return res;
+		}
 
-        Vector normal = Vector::random(vectors[0].dim());
+	};
+	//n vectors
+	inline std::pair<HalfSpace, double> space_from_vectors(const std::vector<Vector>& vectors) {
+		std::vector<Vector> edges;
+		if (vectors.size()==0)
+		{
+		}
+		if (vectors.size() !=vectors[0].dim())
+		{
+			throw std::logic_error("cannot construct a half space with this amount of vectors");
+		}
+		edges.reserve(vectors.size());
+		for (size_t i = 1; i < vectors.size(); i++) {
+			edges.push_back(vectors[i] - vectors[0]);
+		}
+		auto basis = gramm_shmitt_process(edges);
+	
+		for (size_t i = 0; i <vectors[0].dim(); i++)
+		{
+			Vector normal = Vector(vectors[0].dim());
+			normal[i] = 1;
+			for (auto& b : basis.first)
+			{
+				normal -= b.project_onto_this_normalized_already(normal);
+			}
+			if (normal.magnitude()>=1e-1)
+			{
+				return std::pair(HalfSpace(normal, Vector::dot_product(vectors[0], normal)), basis.second);
 
-        for (auto& b : basis)
-        {
-            normal -= b.project_onto_this(normal);
-        }
-        return HalfSpace(normal,Vector::dot_product(vectors[0], normal));
-    }
-    void space_from_vector_check(std::vector<Vector> vectors) {
-        HalfSpace p1 = space_from_vectors(vectors);
-        HalfSpace p2 = space_from_vectors(vectors);
-        int l = 3;
-    }
-struct Frep {
-    Frep() {
+			}
+		}
+		throw std::logic_error("not possible");
+	}
 
-    }
-    std::vector<HalfSpace> planes;
-    void add(const HalfSpace& space) {
-        planes.push_back(space);
-    }
-    bool contains(const Vector& point) const{
-        for (const HalfSpace& h:planes)
-        {
-            if (!h.contains(point))
-            {
-                return false;
-            }
-        }
-        return true;
-    }
-};
-struct Simplex {
-    std::vector<Vector> points;
-    size_t dim() {
-        return points[0].dim();
-    }
-    double volume() {
-        std::vector<Vector> perp;
-        for (size_t i = 1; i <= dim(); i++)
-        {
-            perp.push_back(points[i] - points[0]);
-        }
-        perp =gramm_shmitt_process(perp);
-        double amt = 1;
-        for (size_t i = 0; i <dim(); i++)
-        {
-            amt *= perp[i].magnitude()/(i+1);
-        }
-        return amt;
-    }
+	struct Vrep {
+		void add_unchecked(const Vector& pnt)
+		{
+			points.push_back(pnt);
+		}
+		double support(const Vector& direction) const {
+			
+			double spt = -std::numeric_limits<double>().infinity();
+			for (const Vector& v:*this)
+			{
+				spt = std::max(spt,Vector::dot_product(direction, v));
+			}
+			return spt;
+		}
+		bool full_span(size_t trials = 1000) const {
+			size_t d = dim();
+			if (points.size() < d + 1)
+			{
+				return false;
+			}
+			for (size_t t = 0; t < trials; t++)
+			{
+				std::vector<Vector> edges;
+				edges.reserve(d);
+				std::vector<Vector> chosen;
+				while (chosen.size() < d + 1)
+				{
+					Vector base = points[random() * points.size()];
+					if (!std::ranges::contains(chosen, base))
+					{
+						chosen.push_back(base);
 
-};
-inline void combinations_helper(
-    int n,
-    int k,
-    int start,
-    std::vector<size_t>& current,
-    std::vector<std::vector<size_t>>& result)
-{
-    if (current.size() == k) {
-        result.push_back(current);
-        return;
-    }
+					}
+				}
+				for (size_t i = 0; i < d; i++)
+				{
+					edges.push_back(chosen[i] - chosen.back());
+				}
+				double det = gramm_shmitt_process(edges).second;
+				if (std::abs(det) > 1e-6)
+				{
+					gramm_shmitt_process(edges).second;
+					return true;
+				}
+			}
 
-    for (int i = start; i <= n - (k - current.size()); ++i) {
-        current.push_back(i);
-        combinations_helper(n, k, i + 1, current, result);
-        current.pop_back();
-    }
-}
+			return false;
+		}
+		void translate(const Vector& p) {
+			for (Vector& v : points)
+			{
+				v += p;
+			}
+		}
+		using iterator = std::vector<Vector>::iterator;
+		iterator begin() {
+			return points.begin();
+		}
+		iterator end() {
+			return points.end();
+		}
+		using const_iterator = std::vector<Vector>::const_iterator;
+		const_iterator begin() const {
+			return points.begin();
+		}
+		const_iterator end() const {
+			return points.end();
+		}
+		size_t dim() const {
+			return points.empty() ? 0 : points[0].dim();
+		}
+		bool redudant(const Vector& point) {
+			for (const Vector& pnt : points)
+			{
+				if (Vector::distance(point, pnt) <=1e-8)
+				{
+					return true;
+				}
+			}
+			return false;
+		}
+		void add(const Vector& point) {
+			for (const Vector& pnt : points)
+			{
+				if (Vector::distance(point, pnt) < 1e-8)
+				{
+					return;
+				}
 
-inline std::vector<std::vector<size_t>> combinations(int n, int k)
-{
-    std::vector<std::vector<size_t>> result;
-    std::vector<size_t> current;
-    combinations_helper(n, k, 0, current, result);
-    return result;
-}
-struct Vrep {
-    size_t dim() const {
-        return points[0].dim();
-    }
-    void add(Vector point) {
-        points.push_back(point);
-    }
-    std::vector<Vector> points;
-    bool is_supporting_hyperplane(HalfSpace space) {
-        size_t passes=0;
-        size_t fails=0;
-        HalfSpace neg_space = -space;
-        for (const Vector& v : points)
-        {
-            if (!space.suffieciently_close(v))
-            {
-                if (space.contains(v))
-                {
-                    passes++;
-                }
-                else
-                {
-                    fails++;
-                }
-            }
+				if (Vector::distance(point, pnt) <= 1e-4) {
+					double u = Vector::distance(point, pnt);
+					int l = 4;
+				}
+			}
+			points.push_back(point);
+		}
 
-            if (fails != 0 && passes != 0)
-            {
-                return false;
-            }
-        }
-        return true;
-    }
-    void hull() {
-        if (size()<=1+dim())
-        {
-            return;
-        }
-            std::unordered_set<Vector > point_list;
-            std::vector<std::vector<size_t>> combines{ combinations(points.size(), dim() ) };
-            for (const std::vector<size_t>& indices: combines)
-            {
-                std::vector<Vector> vertices;
-                for (size_t i : indices) {
-                    vertices.push_back(points[i]);
-                }
-                HalfSpace space = space_from_vectors(vertices);
-                if (is_supporting_hyperplane(space))
-                {
-                    for (size_t i = 0; i <vertices.size(); i++)
-                    {
-                        point_list.emplace(vertices[i]);
-                    }
-                }
-            }
+		std::vector<Vector> points;
+		std::vector<Vector> points_on(const HalfSpace& space) const {
+			std::vector<Vector> point_list;
+			for (const Vector& v : points)
+			{
+				HalfSpace::ContainmentState state = space.containment(v);
 
-            points.clear();
-            for (const auto& x : point_list) {
-                points.push_back(x);
-            }
-            
-            int l = 3;
-    }
-    
-    size_t size() const {
-        return points.size();
-    }
-    Vector point_in() {
-        Vector total(dim());
-        for (size_t i = 0; i < size(); i++)
-        {
-            total += points[i];
-        }
-        return total / size();
-    }
-    std::vector<Simplex> simplexes() {
-        std::vector<Simplex> point_list;
-        std::vector<std::vector<size_t>> combines{ combinations(points.size(), dim()) };
-        Vector center = point_in();
-        for (const std::vector<size_t>& indices : combines)
-        {
-            if (indices[0]==5&&indices[1]==13)
-            {
-                int l = 4;
-            }
-            std::vector<Vector> vertices;
-            for (size_t i : indices) {
-                vertices.push_back(points[i]);
-            }
-            HalfSpace space = space_from_vectors(vertices);
-            if (is_supporting_hyperplane(space))
-            {
+				if (space.suffieciently_close(v))
+				{
 
-                    vertices.push_back(center); 
-                    point_list.push_back(Simplex{ vertices });
-            }
-        }
-        return point_list;
-    }
-    double volume() {
-        hull();
-        std::vector<Simplex> simplex_list= simplexes();
-        double volume = 0;
-        for (size_t i = 0; i < simplex_list.size(); i++)
-        {
-            volume += simplex_list[i].volume();
-        }
-        return volume;
-    }
-};
-struct Box {
-    Vector scale;
-    Vector center;
-    size_t dim() const {
-        return scale.dim();
-    }
-    Vector random_pnt() const {
-        std::vector<double> points;
-        for (size_t i = 0; i < dim(); i++)
-        {
-            points.push_back((random() - .5) * scale[i] + center[i]);
-        }
-        return Vector(points);
-    }
-    static Box from_min_max(Vector min, Vector max) {
-        Vector sub = max - min;
-        sub.abs_each();
-        return Box{ .scale =sub,.center = (max + min) / 2 };
-    }
-    double volume() const {
-        double val = 1;
-        for (size_t i = 0; i < dim(); i++)
-        {
-            val *= scale[i];
-        }
-        return val;
-    }
-};
-struct SupportFunction {
-    virtual size_t dim() const = 0;
-    virtual double operator()(Vector amt) const = 0;
-    HalfSpace half_space_from(Vector amt) const {
-        return HalfSpace(amt, this->operator()(amt));
-    }
-    Box box() const {
-        Vector jank(dim());
-        Vector min(dim());
-        Vector max(dim());
-        for (size_t i = 0; i < dim(); i++)
-        {
-            jank[i] = 1;
-            if (i!=0)
-            {
-                jank[i - 1] = 0;
-            }
-            min[i] = -operator()(-jank);
-            max[i] = operator()(jank);
-        }
-        return Box::from_min_max(min, max);
-    }
-    Frep f_rep(size_t size) const {
-        Frep p;
-        for (size_t i = 0; i < size; i++)
-        {
-            Vector next = Vector::random(dim());
+					point_list.push_back(v);
+				}
+			}
+			return point_list;
+		}
+		bool contains_all(HalfSpace space) const {
+			for (const Vector& v : points)
+			{
+				if (!space.contains(v))
+				{
+					return false;
+				}
+			}
+			return true;
+		}
+		bool is_supporting_hyperplane(const HalfSpace& space) const {
+			size_t passes = 0;
+			size_t fails = 0;
+			for (const Vector& v : points)
+			{
+				HalfSpace::ContainmentState state = space.containment(v);
 
-            p.add(half_space_from(next));
-        }
-        return p;
-    }
-    bool contains(Vector pnt, size_t evals) const {
-        for (size_t i = 0; i < evals; i++)
-        {
-            Vector next = Vector::random(dim());
-            if (!half_space_from(next).contains(pnt))
-            {
-                return false;
-            }
-        }
-        return true;
-    }
+				if (state == HalfSpace::ContainmentState::strongly_in)
+				{
+					passes++;
+				}
+				else if (state == HalfSpace::ContainmentState::strongly_out)
+				{
+					fails++;
+				}
 
-    double volume(size_t evals,size_t cont) const {
-        Box eval_box = box();
-        size_t count = 0;
-        Frep rep = f_rep(cont);
-        Vrep points;
-        
-        while(points.size()<evals)
-        {
-            Vector point = eval_box.random_pnt();
-            if (rep.contains(point))
-            {
-                points.add(point);
-                points.hull();
-            }
-        }
-        return points.volume();
-    }
 
-};
-struct Sphere:SupportFunction{
-    size_t dimention = 2;
-    size_t dim() const {
-        return dimention;
-    }
+				if (fails != 0 && passes != 0)
+				{
+					return false;
+				}
+			}
+			return fails+passes!=size();
+		}
+		bool is_neccesary_supporting_hyperplane(const HalfSpace& space) const {
+			size_t passes = 0;
+			size_t fails = 0;
+			for (const Vector& v : points)
+			{
+				HalfSpace::ContainmentState state = space.containment(v);
 
-    double operator()(Vector amt) const {
-        return 1;
-    }
-};
-int main()
-{
-    std::cout << Sphere().volume(90,1000);
-}
+				if (state==HalfSpace::ContainmentState::strongly_in)
+				{
+					passes++;
+				}
+				else if (state == HalfSpace::ContainmentState::strongly_out)
+				{
+					fails++;
+				}
+				
 
-// Run program: Ctrl + F5 or Debug > Start Without Debugging menu
-// Debug program: F5 or Debug > Start Debugging menu
+				if (fails != 0 && passes != 0)
+				{
+					return false;
+				}
+			}
+			return dim()<=size()-passes-fails;
+		}
 
-// Tips for Getting Started: 
-//   1. Use the Solution Explorer window to add/manage files
-//   2. Use the Team Explorer window to connect to source control
-//   3. Use the Output window to see build output and other messages
-//   4. Use the Error List window to view errors
-//   5. Go to Project > Add New Item to create new code files, or Project > Add Existing Item to add existing code files to the project
-//   6. In the future, to open this project again, go to File > Open > Project and select the .sln file
+		bool contained_in(const HalfSpace& space) const {
+			for (const Vector& v : points)
+			{
+				if (!space.contains(v))
+				{
+					return false;
+				}
+			}
+			return true;
+		}
+		size_t size() const {
+			return points.size();
+		}
+		Vector point_in() {
+			Vector total(dim());
+			for (size_t i = 0; i < size(); i++)
+			{
+				total += points[i];
+			}
+			return total / size();
+		}
+		std::vector<Vector> select(const std::vector<size_t>& indices) const {
+			std::vector<Vector> vertices;
+			vertices.reserve(indices.size());
+			for (size_t i : indices) {
+				vertices.push_back(points[i]);
+			}
+			return vertices;
+		}
+	};
+	struct Frep {
+		void translate(const Vector& p) {
+			for (HalfSpace& h : *this)
+			{
+				h.translate(p);
+			}
+		}
+		Frep() {
+
+		}
+		Vector project_onto(Vector pnt,size_t break_count) const {
+			size_t times = 0;
+
+			while (true) {
+				const HalfSpace* worst = nullptr;
+				double worst_violation = 0;
+
+				for (const HalfSpace& h : planes) {
+					double violation = h.signed_dist(pnt);
+
+					if (violation > worst_violation) {
+						worst_violation = violation;
+						worst = &h;
+					}
+				}
+
+				if (worst_violation < 1e-8)
+				{
+					break;
+				}
+				pnt = worst->project_onto_halfspace(pnt);
+				if (times>= break_count) {
+					break;
+				}
+				times++;
+
+			}
+
+			
+			return pnt;
+		}
+		
+		Vector chebeshev_center(size_t iterations=100) const {
+			Vector pnt = project_onto(Vector(dim()),1000);
+			
+			double slack = 0;
+			for(int i=0;i< iterations;i++){
+
+				std::optional<HalfSpace> space;
+				for (const HalfSpace& h : planes)
+				{
+					//greatest error plane 
+					if (!space || h.signed_dist(pnt) >= space.value().signed_dist(pnt))
+					{
+						slack = h.signed_dist(pnt);
+						space = h;
+					}
+				}
+
+				if (space)
+				{
+					HalfSpace max= space.value();
+					
+					Vector dir = Vector::random(dim());
+					while(Vector::dot_product(max.normal,dir)<=0)
+					{
+						dir = Vector::random(dim());
+					}
+					double move_dist = -std::numeric_limits<double>().infinity();
+					for (const HalfSpace& h : planes)
+					{
+						double h_m = Vector::dot_product(dir, max.normal);
+						double h_o = Vector::dot_product(dir, h.normal);
+						//our_dp*x+our_amt=other_dp*x+other_amt
+						double normal_ratio= h_m-h_o;
+
+						if (abs(normal_ratio)>=1e-5)
+						{
+							double dp_max= max.signed_dist(pnt);
+							double dp_other= h.signed_dist(pnt);
+							double t = -(dp_max-dp_other) / (normal_ratio);
+							
+							//get this working later
+							if (Vector::dot_product(dir, h.normal)<0)
+							{
+
+								move_dist = std::max(move_dist, t);
+							}
+								
+						}
+							
+						
+					}
+					if (move_dist==-std::numeric_limits<double>().infinity())
+					{
+						return pnt;
+					}
+					pnt += dir*move_dist;
+				}
+
+
+			}
+			return pnt;
+		}
+
+		
+			
+		std::optional<double> hit_time(const Ray& r) const {
+			std::optional<double> min_time;
+			for (const HalfSpace& space : planes)
+			{
+				std::optional<double> d = space.hit_time(r);
+				if (d.has_value() && (!min_time.has_value() || d.value() <= min_time.value()))
+				{
+					min_time = d;
+				}
+			}
+			return min_time;
+		}
+		std::optional<Vector> hit(const Ray& r) const {
+			std::optional<double> ht = hit_time(r);
+			if (!ht)
+			{
+				return std::nullopt;
+			}
+			return r.along(ht.value());
+		}
+		bool corner(const Vector& point) const
+		{
+			size_t bnd_count = 0;
+			for (const HalfSpace& h : planes)
+			{
+				if (h.suffieciently_close(point))
+				{
+					bnd_count++;
+				}
+				else
+				{
+					if (!h.contains_exactly(point))
+					{
+						return false;
+					}
+				}
+
+			}
+			return (bnd_count >= dim());
+		}
+		bool boundry(const Vector& point) const {
+			bool bnd = false;
+			for (const HalfSpace& h : planes)
+			{
+				if (h.suffieciently_close(point))
+				{
+					bnd = true;
+				}
+				else
+				{
+					if (!h.contains_exactly(point))
+					{
+						return false;
+					}
+				}
+
+			}
+			return bnd;
+		}
+		using iterator = std::vector<HalfSpace>::iterator;
+		iterator begin() {
+			return planes.begin();
+		}
+		iterator end() {
+			return planes.end();
+		}
+		using const_iterator = std::vector<HalfSpace>::const_iterator;
+		const_iterator begin() const {
+			return planes.begin();
+		}
+		const_iterator end() const {
+			return planes.end();
+		}
+		std::vector<HalfSpace> planes;
+		
+		size_t size() const {
+			return planes.size();
+		}
+		size_t dim() const {
+			return planes.size() == 0 ? 0:planes[0].dim();
+		}
+		std::vector<HalfSpace> faces_on(const Vector& point) const {
+			std::vector<HalfSpace> plane_list;
+			for (const HalfSpace& space: planes)
+			{
+				if (space.suffieciently_close(point))
+				{
+					plane_list.push_back(space);
+				}
+
+			}
+			return plane_list;
+		}
+		bool contains(const Vector& point) const {
+			for (const HalfSpace& h : planes)
+			{
+				if (!h.contains(point))
+				{
+					return false;
+				}
+			}
+			return true;
+		}
+
+		void add_unchecked(const HalfSpace& space)
+		{
+			planes.push_back(space);
+		}
+		void add(const HalfSpace& space)
+		{
+			for (const auto& old : planes)
+			{
+				double angle = Vector::dot_product(old.normal, space.normal);
+				if (std::abs(angle - 1) <= 1e-8 &&
+					std::abs(old.bound - space.bound) <= 1e-8)
+				{
+					return;
+				}
+			}
+
+			planes.push_back(space);
+		}
+	};
+	inline void combinations_helper(
+		int n,
+		int k,
+		int start,
+		std::vector<size_t>& current,
+		std::vector<std::vector<size_t>>& result)
+	{
+		if (current.size() == k) {
+			result.push_back(current);
+			return;
+		}
+
+		for (int i = start; i <= n - (k - current.size()); ++i) {
+			current.push_back(i);
+			combinations_helper(n, k, i + 1, current, result);
+			current.pop_back();
+		}
+	}
+
+	inline std::vector<std::vector<size_t>> combinations(int n, int k)
+	{
+		if (n < k)
+		{
+			return { };
+		}
+		std::vector<std::vector<size_t>> result;
+		std::vector<size_t> current;
+		combinations_helper(n, k, 0, current, result);
+		return result;
+	}
+	std::optional<Frep> to_frep(const Vrep& vrep) {
+		Frep rep;
+		if (!vrep.full_span(100))
+		{
+			return std::nullopt;
+		}
+		std::vector<std::vector<size_t>> combines{ combinations(vrep.size(), vrep.dim()) };
+		for (std::vector<size_t> inds : combines) {
+			std::vector<Vector> points;
+			for (size_t ind : inds) {
+				points.push_back(vrep.points[ind]);
+			}
+			auto space = space_from_vectors(points);
+			if (!vrep.contains_all(space.first))
+			{
+				space.first = -space.first;
+			}
+			if (abs(space.second) >= 1e-8&& vrep.is_neccesary_supporting_hyperplane(space.first)) {
+				rep.add(space.first);
+			}
+		}
+
+		return rep;
+	}
+	bool bounded(Frep frep){
+		if (frep.size()<=frep.dim())
+		{
+			return false;
+		}
+		Vrep dual;
+		frep.translate(-frep.chebeshev_center());
+		for (auto& h : frep) {
+			dual.add(h.normal / h.bound);
+		}
+		std::optional<Frep> dual_rep= to_frep(dual);
+		Vector orgin = Vector(frep.dim());
+		return dual_rep&& dual_rep.value().contains(orgin)&& !dual_rep.value().boundry(orgin);
+	}
+
+	std::optional<Vrep> to_vrep(const Frep& frep) {
+
+		if (!bounded(frep))
+		{
+			return std::nullopt;
+		}
+		Vrep rep;
+
+		//std::cout << std::format("{}", frep.planes);
+		std::vector<std::vector<size_t>> combines{ combinations(frep.size(), frep.dim()) };
+		for (std::vector<size_t> inds : combines) {
+			std::vector<HalfSpace> planes;
+			for (size_t ind : inds) {
+				planes.push_back(frep.planes[ind]);
+			}
+			std::optional<Vector> pnt = GaussianMatrix(planes).solve();
+			if (pnt&&frep.boundry(*pnt)) {
+				rep.add(*pnt);
+			}
+		}
+
+		return rep;
+	}	
+	
+	double sphere_sa(size_t n) {
+		return (pow(3.1415926, n / 2.0)) / tgamma(1 + (n / 2.0));
+	}
+	double radial_volume_apx(const Frep& frep, size_t amt) {
+		Vector pnt = frep.chebeshev_center();
+		double value = 0;
+		for (size_t i = 0; i < amt; i++)
+		{
+			Ray look = Ray(pnt, Vector::random(pnt.dim()));
+			double val = frep.hit_time(look).value();
+			value += pow(val, frep.dim()) / amt;
+		}
+		value *= sphere_sa(frep.dim());
+		return value;
+	}
+	template<typename T>
+	std::vector<T> unordered_intersection(
+		const std::vector<T>& a,
+		const std::vector<T>& b)
+	{
+		std::vector<T> result;
+
+		std::unordered_set<T> set_a(
+			a.begin(),
+			a.end()
+		);
+
+		for (const T& item : b)
+		{
+			if (set_a.contains(item))
+			{
+				result.push_back(item);
+			}
+		}
+
+		return result;
+	}
+	struct Incremental {
+		size_t plane_count() const {
+
+			return faces.size();
+		}
+		Vrep points;
+		Frep faces;
+		size_t dim() {
+			return std::max(points.dim(),faces.dim());
+		}
+		Vector dual() {
+		
+			Vector pnt = points.point_in();
+			points.translate(-pnt);
+			faces.translate(-pnt);
+			Frep h;
+			for (const Vector& p:points)
+			{
+				h.add(HalfSpace(p,1));
+			}
+			Vrep v;
+			for (const HalfSpace& hs: faces)
+			{
+				v.add(hs.normal/hs.bound);
+			}
+			
+		}
+		bool body() {
+			return points.size() >dim()&& faces.size() > faces.dim();
+
+		}
+		void well_defined_invariant() {
+			for (const HalfSpace& space : faces)
+			{
+				if (!points.is_neccesary_supporting_hyperplane(space)) {
+					
+					print("points{},\nface{}", points.points, space);
+
+					print("{}", points.points_on(space));
+					points.is_neccesary_supporting_hyperplane(space);
+					
+					throw std::logic_error("all planes must be supporting");
+				}
+			}
+			for (const Vector& point:points)
+			{
+				if (!faces.corner(point))
+				{
+					throw std::logic_error("all points must be on the boundry");
+				}
+			}
+		}
+		bool contains(const Vector& point) const {
+			return faces.contains(point);
+		}
+		bool contained_in(const HalfSpace& space) const {
+			return points.contained_in(space);
+		}
+		
+		void add(const HalfSpace& space) {
+
+			if (!body())
+			{
+				faces.add(space);
+
+				points= to_vrep(faces).value_or(Vrep());
+
+				if (body())
+				{
+					faces= to_frep(points).value();
+				}
+				return;
+			}
+			if (contained_in(space)) {
+				return;
+			}
+			Vrep in;
+			Vrep out;
+			for (const Vector& v:points)
+			{
+				if (space.contains(v))
+				{
+					in.add_unchecked(v);
+				}
+				else
+				{
+					out.add_unchecked(v);
+				}
+			}
+			points = in;
+			for (const Vector& lost : out)
+			{
+				auto p1 = faces.faces_on(lost);
+				for (const Vector& kept : in)
+				{
+					
+					std::vector<HalfSpace> ihl;
+					for (const HalfSpace& face:p1)
+					{
+						if (face.suffieciently_close(kept))
+						{
+							ihl.push_back(face);
+						}
+					}
+					if (ihl.size() >= dim() - 1)
+					{
+						if (ihl.size() >= dim())
+						{
+							ihl.erase(ihl.begin() + dim() - 1, ihl.end());
+
+						}
+						ihl.push_back(space);
+						std::optional<Vector> pnt=GaussianMatrix(ihl).solve();
+						if (!pnt)
+						{
+							continue;
+						}
+						if (!contains(pnt.value()))
+						{
+							throw std::logic_error("point must be contained");
+						}
+							points.add(pnt.value());
+							for (const HalfSpace& s : ihl)
+							{
+								if (!s.suffieciently_close(pnt.value()))
+								{
+									throw std::logic_error("error");
+								}
+							}
+				
+					}
+				}
+			}
+			faces.add(space);
+			Frep kept_faces;
+			for (const HalfSpace& space : faces)
+			{
+				//only check those at risk;
+				if (out.is_supporting_hyperplane(space))
+				{
+					if (!points.is_neccesary_supporting_hyperplane(space))
+					{
+						continue;
+					}
+				}
+					kept_faces.add_unchecked(space);
+				
+			}
+			faces = kept_faces;
+			well_defined_invariant();
+
+		}
+		void add(const Vector& point) {
+			if (!body())
+			{
+
+				points.add(point);
+				faces = to_frep(points).value_or(Frep());
+				if (body())
+				{
+					points = to_vrep(faces).value_or(points);
+				}
+				return;
+			}
+
+			if (contains(point)) {
+				return;
+			}
+			Frep contained;
+			Frep lost_rep;
+			for (const HalfSpace& space : faces.planes)
+			{
+				if (space.contains(point))
+				{
+					contained.add(space);
+				}
+				else
+				{
+					lost_rep.add(space);
+				}
+			}
+
+			faces = contained;
+			std::vector<Vector> new_points;
+			std::vector<Vector> rip;
+
+			for (const HalfSpace& lost : lost_rep.planes)
+			{
+				auto p1 = points.points_on(lost);
+				for (const HalfSpace& kept : contained.planes)
+				{
+				
+
+					std::vector<Vector> f_p;
+					for (const Vector& point_in: p1)
+					{
+						if (kept.suffieciently_close(point_in))
+						{
+							f_p.push_back(point_in);
+						}
+					}
+					if (f_p.size()>=dim()-1)
+					{
+						if (f_p.size() >= dim())
+						{
+							f_p.erase(f_p.begin() + dim() - 1, f_p.end());
+
+						}
+						
+						f_p.push_back(point);
+						auto new_space = space_from_vectors(f_p);
+				//		if (abs(new_space.second)>=1e-8)
+						{
+
+							add_face_trivial(new_space.first);
+							for (const Vector& v : f_p)
+							{
+								if (!new_space.first.suffieciently_close(v))
+								{
+									new_space = space_from_vectors(f_p);
+									print("{}", f_p);
+									throw std::logic_error("a");
+								}
+
+							};
+
+						}
+						//else {
+						//	print("distance{}", Vector::distance(f_p[0], f_p[2]));
+							int l = 3;
+					//	}
+					}
+				}
+			}
+			points.add(point);
+
+			Vrep kept_points;
+			Vrep lost_points;
+			for (const Vector& pnt : points)
+			{
+				if (lost_rep.boundry(pnt))
+				{
+					if (!faces.corner(pnt))
+					{
+						lost_points.add_unchecked(pnt);
+						continue;
+					}
+				}
+				kept_points.add_unchecked(pnt);
+
+			}
+			points = kept_points;
+
+			
+			well_defined_invariant();
+		
+		}
+		void add_face_trivial(HalfSpace space) {
+			if (!points.contains_all(space))
+			{
+				space = (-space);
+			}
+			if (!points.contains_all(space))
+			{
+				for (Vector v:points)
+				{
+					if (!space.contains(v))
+					{
+						print("{}", v);
+						print("dist{}", space.dist(v));
+					}
+				}
+
+				throw std::logic_error("how");
+			}
+			faces.add(space);
+
+		}
+		double support(const Vector& direction) const {
+			return points.support(direction);
+		}
+		static std::optional<Incremental> try_build(Vrep point_list) {
+			Incremental built;
+			if (point_list.dim() == 0)
+			{
+				return Incremental{};
+
+			}
+			if (point_list.size() <= point_list.dim())
+			{
+				throw std::logic_error("no sub simplexes");
+			}
+			for (Vector pnt : point_list)
+			{
+				built.add(pnt);
+			}
+			return built;
+		}static std::optional<Incremental> try_build(const Frep& plane_list) {
+			Incremental built;
+			if (plane_list.dim() == 0)
+			{
+				return Incremental{};
+
+			}
+			if (plane_list.size() <= plane_list.dim())
+			{
+				throw std::logic_error("no sub simplexes");
+			}
+			for (HalfSpace plane: plane_list)
+			{
+				built.add(plane);
+			}
+			return built;
+		}
+
+		double volume() {
+			
+			well_defined_invariant();
+			if (dim() == 0)
+			{
+				return 1;
+			}
+			Vector center = points.point_in();
+			
+			double volume = 0;
+			for (const HalfSpace& face : faces.planes)
+			{
+
+
+				std::vector<Vector> points_on_plane = points.points_on(face);
+				Span spn = face.span();
+				Vrep unleashed;
+				for (Vector pnt : points_on_plane)
+				{
+					unleashed.add(spn.to_basis(pnt));
+				}
+				double dist = face.dist(center);
+				//std::cout << std::format("face{}\n center{}\n", face,center);
+				//std::cout << dist<<",\n"+std::format("points{}", points.points) << "\n";
+				std::optional<Incremental> built = Incremental::try_build(unleashed);
+				if (built)
+				{
+					volume += built->volume() * dist / dim();
+				}
+			}
+			
+			well_defined_invariant();
+			return volume;
+		}
+	};
+	struct SupportFunction {
+		virtual size_t dim() const = 0;
+		virtual double operator()(Vector amt) const = 0;
+		HalfSpace half_space_from(const Vector& amt) const {
+			return HalfSpace(amt, this->operator()(amt));
+		}
+	
+		Incremental f_rep(size_t size) const {
+			Incremental p{};
+
+
+			while (p.plane_count() < size)
+			{
+				std::vector<Vector> unique_candidates;
+				size_t unique_direction_count = 10;
+				// Layer 1: create 20 diverse candidates
+				while (unique_candidates.size() < unique_direction_count)
+				{
+					unique_candidates.push_back(Vector::random(dim()));
+				}
+
+
+				Vector best;
+				double max_discrepancy = -std::numeric_limits<double>::infinity();
+
+				for (const Vector& candidate : unique_candidates)
+				{
+					double discrepancy =abs(this->operator()(candidate) - p.support(candidate));
+					if (discrepancy > max_discrepancy)
+					{
+						max_discrepancy = discrepancy;
+						best = candidate;
+					}
+				}
+				p.add(half_space_from(best));
+			}
+			return p;
+		}
+		bool contains(Vector pnt, size_t evals) const {
+			for (size_t i = 0; i < evals; i++)
+			{
+				Vector next = Vector::random(dim());
+				if (!half_space_from(next).contains(pnt))
+				{
+					return false;
+				}
+			}
+			return true;
+		}
+
+		double volume(size_t cont) const {
+			Incremental i = f_rep(cont);
+			//return radial_volume_apx(i.faces, 1000);
+			return i.volume();
+		}
+
+	};
+	struct Sphere :SupportFunction {
+		size_t dimention =4;
+		size_t dim() const {
+			return dimention;
+		}
+
+		double operator()(Vector amt) const {
+			return 1;
+		}
+	};
+	Frep make_cube_frep()
+	{
+		Frep cube;
+
+		for (size_t i = 0; i < 3; i++)
+		{
+			Vector n(3);
+			n[i] = 1;
+			cube.add(HalfSpace(n, 1));
+
+			n[i] = -1;
+			cube.add(HalfSpace(n, 1));
+		}
+
+		return cube;
+	}
+	int main()
+	{
+		while (true) {
+			print("{}", seed());
+			print("{}",Sphere().volume(200));
+		}
+	}
+
+	// Run program: Ctrl + F5 or Debug > Start Without Debugging menu
+	// Debug program: F5 or Debug > Start Debugging menu
+
+	// Tips for Getting Started: 
+	//   1. Use the Solution Explorer window to add/manage files
+	//   2. Use the Team Explorer window to connect to source control
+	//   3. Use the Output window to see build output and other messages
+	//   4. Use the Error List window to view errors
+	//   5. Go to Project > Add New Item to create new code files, or Project > Add Existing Item to add existing code files to the project
+	//   6. In the future, to open this project again, go to File > Open > Project and select the .sln file
