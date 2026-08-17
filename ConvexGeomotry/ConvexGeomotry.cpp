@@ -13,6 +13,25 @@
 #include <flat_set>
 #include <ranges>
 #include "random.h"
+#include <format>
+#include <boost/multiprecision/cpp_dec_float.hpp>
+
+
+using precise = boost::multiprecision::cpp_dec_float_50;
+
+
+template <>
+struct std::formatter<precise, char>
+	: std::formatter<double, char>
+{
+	auto format(const precise& value, std::format_context& ctx) const
+	{
+		return std::formatter<double, char>::format(
+			value.convert_to<double>(), ctx
+		);
+	}
+};
+
 #include <unordered_set>
 template<typename ...Args>
 void print(std::format_string<Args...> fmt,Args&&... args) {
@@ -20,14 +39,14 @@ void print(std::format_string<Args...> fmt,Args&&... args) {
 }
 struct Vector {
 
-	std::vector<double> coords;
+	std::vector<precise> coords;
 
 	Vector() = default;
 
-	explicit Vector(const std::vector<double>& v)
+	explicit Vector(const std::vector<precise>& v)
 		: coords(v) {
 	}
-	explicit Vector(std::vector<double>&& v)
+	explicit Vector(std::vector<precise>&& v)
 		: coords(std::move(v)) {
 	}
 
@@ -44,25 +63,25 @@ struct Vector {
 			throw std::invalid_argument("Point dimensions do not match.");
 	}
 
-	static double dot_product(const Vector& a, const Vector& b) {
+	static precise dot_product(const Vector& a, const Vector& b) {
 		check_dimensions(a, b);
 
-		double sum = 0.0;
+		precise sum = 0.0;
 		for (size_t i = 0; i < a.dim(); i++)
 			sum += a[i] * b[i];
 
 		return sum;
 	}
 	//one when perfectly aligned
-	static double aligment0to1(const Vector& a, const Vector& b) {
+	static precise aligment0to1(const Vector& a, const Vector& b) {
 		return (dot_product(a, b) + 1) / 2.0;
 
-	}static double distance(const Vector& a, const Vector& b) {
+	}static precise distance(const Vector& a, const Vector& b) {
 		return (a - b).magnitude();
 
 	}
-	double magnitude() const {
-		return std::sqrt(dot_product(*this, *this));
+	precise magnitude() const {
+		return boost::multiprecision::sqrt(dot_product(*this, *this));
 	}
 	Vector normal() const {
 		if (dim()==0)
@@ -75,11 +94,11 @@ struct Vector {
 		*this /= magnitude();
 		return *this;
 	}
-	double& operator[](size_t i) {
+	precise& operator[](size_t i) {
 		return coords[i];
 	}
 
-	const double& operator[](size_t i) const {
+	const precise& operator[](size_t i) const {
 		return coords[i];
 	}
 
@@ -96,7 +115,7 @@ struct Vector {
 	void abs_each() {
 		for (size_t i = 0; i < dim(); i++)
 		{
-			coords[i] = std::abs(coords[i]);
+			coords[i] = boost::multiprecision::abs(coords[i]);
 		}
 	}
 	Vector& operator+=(const Vector& other) {
@@ -124,7 +143,7 @@ struct Vector {
 	}
 
 
-	Vector operator*(double scalar) const {
+	Vector operator*(precise scalar) const {
 		Vector result(dim());
 
 		for (size_t i = 0; i < dim(); i++)
@@ -133,21 +152,21 @@ struct Vector {
 		return result;
 	}
 
-	Vector& operator*=(double scalar) {
+	Vector& operator*=(precise scalar) {
 		for (size_t i = 0; i < dim(); i++)
 			coords[i] *= scalar;
 
 		return *this;
 	}
 
-	Vector operator/(double scalar) const {
+	Vector operator/(precise scalar) const {
 		if (scalar == 0.0)
 			throw std::invalid_argument("Division by zero.");
 
 		return *this * (1.0 / scalar);
 	}
 
-	Vector& operator/=(double scalar) {
+	Vector& operator/=(precise scalar) {
 		return *this *= 1 / scalar;
 	}
 
@@ -178,8 +197,8 @@ struct Vector {
 };
 
 //<=n vectors and returns orthagonal ones with the same span
-inline std::optional<std::pair<std::vector<Vector>, double>> gramm_shmitt_process(std::vector<Vector> vectors) {
-	double scale = 1.0;
+inline std::optional<std::pair<std::vector<Vector>, precise>> gramm_shmitt_process(std::vector<Vector> vectors) {
+	precise scale = 1.0;
 
 	for (size_t i = 0; i < vectors.size(); i++) {
 		Vector& v = vectors[i];
@@ -191,7 +210,7 @@ inline std::optional<std::pair<std::vector<Vector>, double>> gramm_shmitt_proces
 				v -= vectors[j] * Vector::dot_product(v, vectors[j]);
 			}
 		}
-		double mag = v.magnitude();
+		precise mag = v.magnitude();
 		scale *= mag;
 
 		if (mag >= 1e-8) {
@@ -203,11 +222,11 @@ inline std::optional<std::pair<std::vector<Vector>, double>> gramm_shmitt_proces
 		}
 	}
 	
-	return std::optional(std::pair<std::vector<Vector>, double>({ vectors, scale }));
+	return std::optional(std::pair<std::vector<Vector>, precise>({ vectors, scale }));
 }
 
 struct Span {
-	double determinant() const {
+	precise determinant() const {
 		return gramm_shmitt_process(points).transform([](auto&& value) {return value.second;}).value_or(0);
 	}
 	std::vector<Vector> points;
@@ -219,7 +238,7 @@ struct Span {
 		Vector pnt(dim());
 		for (size_t i = 0; i < dim(); i++)
 		{
-			double mag = points[i].magnitude();
+			precise mag = points[i].magnitude();
 			pnt[i] = Vector::dot_product(points[i], (point))/(mag*mag);
 		}
 		return pnt;
@@ -237,14 +256,14 @@ struct Ray {
 	Vector normal() const {
 		return direction.normal();
 	}
-	Vector along(double dist) const {
+	Vector along(precise dist) const {
 		return start + direction*dist;
 	}
 };
 struct HalfSpace {
 	Vector normal;
-	double bound;
-	HalfSpace(const Vector& norm, double bnd) :normal(norm), bound(bnd) {
+	precise bound;
+	HalfSpace(const Vector& norm, precise bnd) :normal(norm), bound(bnd) {
 		bound /= norm.magnitude();
 		normal.normalize();
 	}
@@ -270,8 +289,8 @@ struct HalfSpace {
 	};
 	ContainmentState containment(const Vector& other) const {
 
-		double state = bound - Vector::dot_product(normal, other);
-		double abs_dist = abs(state);
+		precise state = bound - Vector::dot_product(normal, other);
+		precise abs_dist = abs(state);
 		if (abs_dist > 1e-8 && abs_dist < 1e-5) {
 	//		print("[DEBUG Containment] Point near boundary gray-zone!");
 			//print("  Signed distance: {:.10e} | Target threshold: 1e-8", abs_dist);
@@ -291,32 +310,26 @@ struct HalfSpace {
 		return Vector::dot_product(normal, other) <= bound ;
 	}
 	bool suffieciently_close(const Vector& other) const {
-		return std::abs(Vector::dot_product(normal, other) - bound) <= 1e-8;
+		return boost::multiprecision::abs(Vector::dot_product(normal, other) - bound) <= 1e-8;
 	}
 	Vector project_onto_plane(const Vector& other) const {
 		return other + normal * (bound - Vector::dot_product(normal, other));
 	}
 	Vector project_onto_halfspace(const Vector& other) const {
-		return other + normal * std::min(0.0,(bound - Vector::dot_product(normal, other)));
+		return other + normal * min(precise(0.0),(bound - Vector::dot_product(normal, other)));
 	}
 	size_t dim() const {
 		return normal.dim();
 	}
-	double dist(const Vector& point) const {
+	precise dist(const Vector& point) const {
 		return (project_onto_plane(point) - point).magnitude();
 	}
 	//negitive if in
-	double signed_dist(const Vector& pnt) const {
+	precise signed_dist(const Vector& pnt) const {
 		return (Vector::dot_product(normal, pnt)- bound);
 	}
-	static double simularity(const HalfSpace& a, const HalfSpace& b) {
-		double angle = Vector::aligment0to1(a.normal, b.normal);
-		double size_alignment = 1 - (std::abs(a.bound - b.bound) / std::max(abs(a.bound), abs(b.bound)));
-		return angle * size_alignment;
-
-	}
-	std::optional<double> hit_time(const Ray& ray) const {
-		double ht = dist(ray.start) / Vector::dot_product(normal, ray.direction);
+	std::optional<precise> hit_time(const Ray& ray) const {
+		precise ht = dist(ray.start) / Vector::dot_product(normal, ray.direction);
 		if (ht > 0)
 		{
 			return ht;
@@ -418,8 +431,8 @@ namespace std {
 		size_t operator()(const Vector& v) const noexcept {
 			size_t seed = 0;
 
-			for (double x : v.coords) {
-				size_t h = std::hash<double>{}(x);
+			for (precise x : v.coords) {
+				size_t h = std::hash<precise>{}(x);
 
 				// hash combine (boost-style)
 				seed ^= h + 0x9e3779b9 + (seed << 6) + (seed >> 2);
@@ -433,7 +446,7 @@ namespace std {
 		size_t operator()(const HalfSpace& v) const noexcept {
 			size_t seed = 0;
 			seed=std::hash<Vector>()(v.normal);
-				seed ^= std::hash<double>()(v.bound) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+				seed ^= std::hash<precise>()(v.bound) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
 			return seed;
 		}
 	};
@@ -468,11 +481,11 @@ namespace std {
 			for (size_t i = 0; i < rows.size(); i++)
 			{
 				size_t pivot = i;
-				double best = std::abs(rows[i][i]);
+				precise best = boost::multiprecision::abs(rows[i][i]);
 				//partial pivot
 				for (size_t r = i; r < rows.size(); ++r)
 				{
-					double val = std::abs(rows[r][i]);
+					precise val = boost::multiprecision::abs(rows[r][i]);
 					if (val >=best)
 					{
 						best = val;
@@ -495,7 +508,7 @@ namespace std {
 			size_t dim = rows.size();
 			Vector res(dim);
 			for (int i = static_cast<int>(dim) - 1; i >= 0; i--) {
-				double sum = rows[i][dim];
+				precise sum = rows[i][dim];
 				for (size_t j = i + 1; j < dim; j++) {
 					sum -= rows[i][j] * res[j];
 				}
@@ -541,14 +554,14 @@ namespace std {
 				// --- AFFINE COMBINATION TEST ---
 				// Construct a random point inside the plane span: P = sum(alpha_i * v_i) with sum(alpha_i) = 1
 				Vector affine_point(vectors[0].dim());
-				double idk = 0;
+				precise idk = 0;
 				for (size_t k = 0; k < vectors.size(); ++k) {
-					double w = (k!=vectors.size()-1)?k*-9.3 : (1-idk);
+					precise w = (k!=vectors.size()-1)? precise(k*-9.3): (1-idk);
 					idk +=w;
 					affine_point += vectors[k] * w;
 				}
 
-				double dist = hs.dist(affine_point);
+				precise dist = hs.dist(affine_point);
 				if (dist > 1e-10) {
 					print( "[DEBUG PLANE] Affine combination test failed! Point dist to plane{}",dist );
 					
@@ -564,9 +577,9 @@ namespace std {
 		{
 			points.push_back(pnt);
 		}
-		double support(const Vector& direction) const {
+		precise support(const Vector& direction) const {
 			
-			double spt = -std::numeric_limits<double>().infinity();
+			precise spt = -std::numeric_limits<precise>().infinity();
 			for (const Vector& v:*this)
 			{
 				spt = std::max(spt,Vector::dot_product(direction, v));
@@ -647,7 +660,7 @@ namespace std {
 				}
 
 				if (Vector::distance(point, pnt) <= 1e-4) {
-					double u = Vector::distance(point, pnt);
+					precise u = Vector::distance(point, pnt);
 					int l = 4;
 				}
 			}
@@ -773,10 +786,10 @@ namespace std {
 
 			while (true) {
 				const HalfSpace* worst = nullptr;
-				double worst_violation = 0;
+				precise worst_violation = 0;
 
 				for (const HalfSpace& h : planes) {
-					double violation = h.signed_dist(pnt);
+					precise violation = h.signed_dist(pnt);
 
 					if (violation > worst_violation) {
 						worst_violation = violation;
@@ -803,7 +816,7 @@ namespace std {
 		Vector chebeshev_center(size_t iterations=100) const {
 			Vector pnt = project_onto(Vector(dim()),1000);
 			
-			double slack = 0;
+			precise slack = 0;
 			for(int i=0;i< iterations;i++){
 
 				std::optional<HalfSpace> space;
@@ -826,19 +839,19 @@ namespace std {
 					{
 						dir = Vector::random(dim());
 					}
-					double move_dist = -std::numeric_limits<double>().infinity();
+					precise move_dist = -std::numeric_limits<precise>().infinity();
 					for (const HalfSpace& h : planes)
 					{
-						double h_m = Vector::dot_product(dir, max.normal);
-						double h_o = Vector::dot_product(dir, h.normal);
+						precise h_m = Vector::dot_product(dir, max.normal);
+						precise h_o = Vector::dot_product(dir, h.normal);
 						//our_dp*x+our_amt=other_dp*x+other_amt
-						double normal_ratio= h_m-h_o;
+						precise normal_ratio= h_m-h_o;
 
 						if (abs(normal_ratio)>=1e-5)
 						{
-							double dp_max= max.signed_dist(pnt);
-							double dp_other= h.signed_dist(pnt);
-							double t = -(dp_max-dp_other) / (normal_ratio);
+							precise dp_max= max.signed_dist(pnt);
+							precise dp_other= h.signed_dist(pnt);
+							precise t = -(dp_max-dp_other) / (normal_ratio);
 							
 							//get this working later
 							if (Vector::dot_product(dir, h.normal)<0)
@@ -851,7 +864,7 @@ namespace std {
 							
 						
 					}
-					if (move_dist==-std::numeric_limits<double>().infinity())
+					if (move_dist==-std::numeric_limits<precise>().infinity())
 					{
 						return pnt;
 					}
@@ -865,11 +878,11 @@ namespace std {
 
 		
 			
-		std::optional<double> hit_time(const Ray& r) const {
-			std::optional<double> min_time;
+		std::optional<precise> hit_time(const Ray& r) const {
+			std::optional<precise> min_time;
 			for (const HalfSpace& space : planes)
 			{
-				std::optional<double> d = space.hit_time(r);
+				std::optional<precise> d = space.hit_time(r);
 				if (d.has_value() && (!min_time.has_value() || d.value() <= min_time.value()))
 				{
 					min_time = d;
@@ -878,7 +891,7 @@ namespace std {
 			return min_time;
 		}
 		std::optional<Vector> hit(const Ray& r) const {
-			std::optional<double> ht = hit_time(r);
+			std::optional<precise> ht = hit_time(r);
 			if (!ht)
 			{
 				return std::nullopt;
@@ -977,9 +990,9 @@ namespace std {
 		{
 			for (const auto& old : planes)
 			{
-				double angle = Vector::dot_product(old.normal, space.normal);
-				if (std::abs(angle - 1) <= 1e-8 &&
-					std::abs(old.bound - space.bound) <= 1e-8)
+				precise angle = Vector::dot_product(old.normal, space.normal);
+				if (boost::multiprecision::abs(angle - 1) <= 1e-8 &&
+					boost::multiprecision::abs(old.bound - space.bound) <= 1e-8)
 				{
 					return;
 				}
@@ -1086,16 +1099,16 @@ namespace std {
 		return rep;
 	}	
 	
-	double sphere_sa(size_t n) {
+	precise sphere_sa(size_t n) {
 		return (pow(3.1415926, n / 2.0)) / tgamma(1 + (n / 2.0));
 	}
-	double radial_volume_apx(const Frep& frep, size_t amt) {
+	precise radial_volume_apx(const Frep& frep, size_t amt) {
 		Vector pnt = frep.chebeshev_center();
-		double value = 0;
+		precise value = 0;
 		for (size_t i = 0; i < amt; i++)
 		{
 			Ray look = Ray(pnt, Vector::random(pnt.dim()));
-			double val = frep.hit_time(look).value();
+			precise val = frep.hit_time(look).value();
 			value += pow(val, frep.dim()) / amt;
 		}
 		value *= sphere_sa(frep.dim());
@@ -1236,7 +1249,7 @@ namespace std {
 								}
 							}
 							for (const HalfSpace& h : ihl) {
-								double dist = std::abs(Vector::dot_product(h.normal, *pnt) - h.bound);
+								precise dist = boost::multiprecision::abs(Vector::dot_product(h.normal, *pnt) - h.bound);
 								
 							}
 					}
@@ -1386,7 +1399,7 @@ namespace std {
 			faces.add(space);
 
 		}
-		double support(const Vector& direction) const {
+		precise support(const Vector& direction) const {
 			return points.support(direction);
 		}
 		static std::optional<Incremental> try_build(Vrep point_list) {
@@ -1423,7 +1436,7 @@ namespace std {
 			return built;
 		}
 
-		double volume() {
+		precise volume() {
 			
 			well_defined_invariant();
 			if (dim() == 0)
@@ -1432,7 +1445,7 @@ namespace std {
 			}
 			Vector center = points.point_in();
 			
-			double volume = 0;
+			precise volume = 0;
 			for (const HalfSpace& face : faces.planes)
 			{
 
@@ -1445,7 +1458,7 @@ namespace std {
 					unleashed.add(spn.to_basis(pnt));
 					
 				}
-				double dist = face.dist(center);
+				precise dist = face.dist(center);
 			
 				
 				std::optional<Incremental> built = Incremental::try_build(unleashed);
@@ -1461,7 +1474,7 @@ namespace std {
 	};
 	struct SupportFunction {
 		virtual size_t dim() const = 0;
-		virtual double operator()(Vector amt) const = 0;
+		virtual precise operator()(Vector amt) const = 0;
 		HalfSpace half_space_from(const Vector& amt) const {
 			return HalfSpace(amt, this->operator()(amt));
 		}
@@ -1482,11 +1495,11 @@ namespace std {
 
 
 				Vector best;
-				double max_discrepancy = -std::numeric_limits<double>::infinity();
+				precise max_discrepancy = -std::numeric_limits<precise>::infinity();
 
 				for (const Vector& candidate : unique_candidates)
 				{
-					double discrepancy =abs(this->operator()(candidate) - p.support(candidate));
+					precise discrepancy =abs(this->operator()(candidate) - p.support(candidate));
 					if (discrepancy > max_discrepancy)
 					{
 						max_discrepancy = discrepancy;
@@ -1510,7 +1523,7 @@ namespace std {
 			return true;
 		}
 
-		double volume(size_t cont) const {
+		precise volume(size_t cont) const {
 			
 			Incremental inc = f_rep(cont);
 		/*size_t sed = seed();
@@ -1555,7 +1568,7 @@ namespace std {
 			return dimention;
 		}
 
-		double operator()(Vector amt) const {
+		precise operator()(Vector amt) const {
 			return 1;
 		}
 	};
