@@ -55,7 +55,7 @@ struct Vector {
 	}
 	//one when perfectly aligned
 	static double aligment0to1(const Vector& a, const Vector& b) {
-		return (dot_product(a, b) + 1) / 2.f;
+		return (dot_product(a, b) + 1) / 2.0;
 
 	}static double distance(const Vector& a, const Vector& b) {
 		return (a - b).magnitude();
@@ -178,30 +178,37 @@ struct Vector {
 };
 
 //<=n vectors and returns orthagonal ones with the same span
-inline std::pair<std::vector<Vector>, double> gramm_shmitt_process(std::vector<Vector> vectors) {
-	double scale = 1;
-	for (int i = 0;i < vectors.size();i++)
-	{
-		double mag = vectors[i].magnitude();
+inline std::optional<std::pair<std::vector<Vector>, double>> gramm_shmitt_process(std::vector<Vector> vectors) {
+	double scale = 1.0;
 
+	for (size_t i = 0; i < vectors.size(); i++) {
+		Vector& v = vectors[i];
+		
+
+		
+		for (int pass = 0; pass < 2; ++pass) {
+			for (size_t j = 0; j < i; ++j) {
+				v -= vectors[j] * Vector::dot_product(v, vectors[j]);
+			}
+		}
+		double mag = v.magnitude();
 		scale *= mag;
-		if (mag>=1e-8)
-		{
-			vectors[i] /= mag;
-		}
-		//modified is apperently more stable
-		for (size_t j = i+1; j < vectors.size(); j++)
-		{
-			vectors[j] -= vectors[i].project_onto_this_normalized_already(vectors[j]);
-		}
 
+		if (mag >= 1e-8) {
+			v /= mag;
+		}
+		else
+		{
+			return std::nullopt;
+		}
 	}
-	return std::pair(vectors, scale);
+	
+	return std::optional(std::pair<std::vector<Vector>, double>({ vectors, scale }));
 }
 
 struct Span {
 	double determinant() const {
-		return gramm_shmitt_process(points).second;
+		return gramm_shmitt_process(points).transform([](auto&& value) {return value.second;}).value_or(0);
 	}
 	std::vector<Vector> points;
 	size_t dim() const {
@@ -213,7 +220,7 @@ struct Span {
 		for (size_t i = 0; i < dim(); i++)
 		{
 			double mag = points[i].magnitude();
-			pnt[i] = Vector::dot_product(points[i], (point))/mag*mag;
+			pnt[i] = Vector::dot_product(points[i], (point))/(mag*mag);
 		}
 		return pnt;
 	}
@@ -264,6 +271,12 @@ struct HalfSpace {
 	ContainmentState containment(const Vector& other) const {
 
 		double state = bound - Vector::dot_product(normal, other);
+		double abs_dist = abs(state);
+		if (abs_dist > 1e-8 && abs_dist < 1e-5) {
+	//		print("[DEBUG Containment] Point near boundary gray-zone!");
+			//print("  Signed distance: {:.10e} | Target threshold: 1e-8", abs_dist);
+		}
+		
 		if (abs(state)<1e-8)
 		{
 			return ContainmentState::boundry;
@@ -325,7 +338,7 @@ struct HalfSpace {
 			unit[i] += 1;
 			points.push_back(project_onto_plane(unit) - center);
 		}
-		points = gramm_shmitt_process(points).first;
+		points = gramm_shmitt_process(points).transform([](auto&& val) {return val.first;}).value_or(std::vector<Vector>());
 		std::swap(points[0], points.back());
 		points.pop_back();
 		return Span{ points };
@@ -451,6 +464,7 @@ namespace std {
 		}
 		std::vector<Vector> rows;
 		std::optional<Vector> solve() {
+			std::vector<Vector> original_rows = rows;
 			for (size_t i = 0; i < rows.size(); i++)
 			{
 				size_t pivot = i;
@@ -480,46 +494,66 @@ namespace std {
 			}
 			size_t dim = rows.size();
 			Vector res(dim);
-			for (int i = dim - 1; i >= 0; i--)
-			{
-				for (size_t j = i + 1; j < dim; j++)
-				{
-					rows[i] -= rows[j] * rows[i][j];
+			for (int i = static_cast<int>(dim) - 1; i >= 0; i--) {
+				double sum = rows[i][dim];
+				for (size_t j = i + 1; j < dim; j++) {
+					sum -= rows[i][j] * res[j];
 				}
-				res[i] = rows[i][dim];
+				res[i] = sum;
 			}
 			return res;
 		}
 
 	};
 	//n vectors
-	inline std::pair<HalfSpace, double> space_from_vectors(const std::vector<Vector>& vectors) {
-		std::vector<Vector> edges;
-		if (vectors.size()==0)
-		{
-		}
-		if (vectors.size() !=vectors[0].dim())
-		{
+	inline std::optional<HalfSpace> space_from_vectors(const std::vector<Vector>& vectors) {
+		if (vectors.empty() || vectors.size() != vectors[0].dim()) {
 			throw std::logic_error("cannot construct a half space with this amount of vectors");
 		}
-		edges.reserve(vectors.size());
+
+		std::vector<Vector> edges;
+		edges.reserve(vectors.size() - 1);
 		for (size_t i = 1; i < vectors.size(); i++) {
 			edges.push_back(vectors[i] - vectors[0]);
 		}
-		auto basis = gramm_shmitt_process(edges);
-	
-		for (size_t i = 0; i <vectors[0].dim(); i++)
-		{
-			Vector normal = Vector(vectors[0].dim());
-			normal[i] = 1;
-			for (auto& b : basis.first)
-			{
-				normal -= b.project_onto_this_normalized_already(normal);
-			}
-			if (normal.magnitude()>=1e-1)
-			{
-				return std::pair(HalfSpace(normal, Vector::dot_product(vectors[0], normal)), basis.second);
 
+		auto basis = gramm_shmitt_process(edges);
+		if (!basis) {
+			return std::nullopt;
+		}
+
+		auto& orthogonal_basis = basis.value().first;
+
+		for (size_t i = 0; i < vectors[0].dim(); i++) {
+			Vector normal(vectors[0].dim());
+			normal[i] = 1.0;
+
+			for (int pass = 0; pass < 2; pass++) {
+				for (const auto& b : orthogonal_basis) {
+					normal -= b.project_onto_this_normalized_already(normal);
+				}
+			}
+
+			if (normal.magnitude() >= 1e-2) {
+				normal /= normal.magnitude(); // Ensure normalized normal
+				HalfSpace hs(normal, Vector::dot_product(vectors[0], normal));
+
+				// --- AFFINE COMBINATION TEST ---
+				// Construct a random point inside the plane span: P = sum(alpha_i * v_i) with sum(alpha_i) = 1
+				Vector affine_point(vectors[0].dim());
+				double idk = 0;
+				for (size_t k = 0; k < vectors.size(); ++k) {
+					double w = (k!=vectors.size()-1)?k*-9.3 : (1-idk);
+					idk +=w;
+					affine_point += vectors[k] * w;
+				}
+
+				double dist = hs.dist(affine_point);
+				if (dist > 1e-10) {
+					print( "[DEBUG PLANE] Affine combination test failed! Point dist to plane{}",dist );
+					
+				}
+				return hs;
 			}
 		}
 		throw std::logic_error("not possible");
@@ -563,10 +597,8 @@ namespace std {
 				{
 					edges.push_back(chosen[i] - chosen.back());
 				}
-				double det = gramm_shmitt_process(edges).second;
-				if (std::abs(det) > 1e-6)
+				if (gramm_shmitt_process(edges).has_value())
 				{
-					gramm_shmitt_process(edges).second;
 					return true;
 				}
 			}
@@ -999,12 +1031,17 @@ namespace std {
 				points.push_back(vrep.points[ind]);
 			}
 			auto space = space_from_vectors(points);
-			if (!vrep.contains_all(space.first))
+			if (space)
 			{
-				space.first = -space.first;
-			}
-			if (abs(space.second) >= 1e-8&& vrep.is_neccesary_supporting_hyperplane(space.first)) {
-				rep.add(space.first);
+
+
+				if (!vrep.contains_all(space.value()))
+				{
+					space.value()= -space.value();
+				}
+				if (vrep.is_neccesary_supporting_hyperplane(space.value())) {
+					rep.add(space.value());
+				}
 			}
 		}
 
@@ -1096,23 +1133,7 @@ namespace std {
 		size_t dim() {
 			return std::max(points.dim(),faces.dim());
 		}
-		Vector dual() {
 		
-			Vector pnt = points.point_in();
-			points.translate(-pnt);
-			faces.translate(-pnt);
-			Frep h;
-			for (const Vector& p:points)
-			{
-				h.add(HalfSpace(p,1));
-			}
-			Vrep v;
-			for (const HalfSpace& hs: faces)
-			{
-				v.add(hs.normal/hs.bound);
-			}
-			
-		}
 		bool body() {
 			return points.size() >dim()&& faces.size() > faces.dim();
 
@@ -1144,7 +1165,6 @@ namespace std {
 		bool contained_in(const HalfSpace& space) const {
 			return points.contained_in(space);
 		}
-		
 		void add(const HalfSpace& space) {
 
 			if (!body())
@@ -1215,7 +1235,10 @@ namespace std {
 									throw std::logic_error("error");
 								}
 							}
-				
+							for (const HalfSpace& h : ihl) {
+								double dist = std::abs(Vector::dot_product(h.normal, *pnt) - h.bound);
+								
+							}
 					}
 				}
 			}
@@ -1236,8 +1259,8 @@ namespace std {
 			}
 			faces = kept_faces;
 			well_defined_invariant();
-
 		}
+
 		void add(const Vector& point) {
 			if (!body())
 			{
@@ -1297,13 +1320,11 @@ namespace std {
 						
 						f_p.push_back(point);
 						auto new_space = space_from_vectors(f_p);
-				//		if (abs(new_space.second)>=1e-8)
+						if (new_space)
 						{
-
-							add_face_trivial(new_space.first);
 							for (const Vector& v : f_p)
 							{
-								if (!new_space.first.suffieciently_close(v))
+								if (!new_space.value().suffieciently_close(v))
 								{
 									new_space = space_from_vectors(f_p);
 									print("{}", f_p);
@@ -1312,16 +1333,15 @@ namespace std {
 
 							};
 
+							add_face_trivial(new_space.value());
 						}
-						//else {
-						//	print("distance{}", Vector::distance(f_p[0], f_p[2]));
-							int l = 3;
-					//	}
+						else {
+							int l = 4;
+						}
 					}
 				}
 			}
 			points.add(point);
-
 			Vrep kept_points;
 			Vrep lost_points;
 			for (const Vector& pnt : points)
@@ -1339,9 +1359,7 @@ namespace std {
 			}
 			points = kept_points;
 
-			
 			well_defined_invariant();
-		
 		}
 		void add_face_trivial(HalfSpace space) {
 			if (!points.contains_all(space))
@@ -1350,12 +1368,16 @@ namespace std {
 			}
 			if (!points.contains_all(space))
 			{
+				print("points{}\n faces{}", points.points, faces.planes);
+				print("generators{}", points.points_on(space));
+				print("{}", space);
 				for (Vector v:points)
 				{
+
 					if (!space.contains(v))
 					{
-						print("{}", v);
-						print("dist{}", space.dist(v));
+					print("{}", v);
+					print("dist{}", space.dist(v));
 					}
 				}
 
@@ -1421,10 +1443,11 @@ namespace std {
 				for (Vector pnt : points_on_plane)
 				{
 					unleashed.add(spn.to_basis(pnt));
+					
 				}
 				double dist = face.dist(center);
-				//std::cout << std::format("face{}\n center{}\n", face,center);
-				//std::cout << dist<<",\n"+std::format("points{}", points.points) << "\n";
+			
+				
 				std::optional<Incremental> built = Incremental::try_build(unleashed);
 				if (built)
 				{
@@ -1477,6 +1500,7 @@ namespace std {
 		bool contains(Vector pnt, size_t evals) const {
 			for (size_t i = 0; i < evals; i++)
 			{
+				
 				Vector next = Vector::random(dim());
 				if (!half_space_from(next).contains(pnt))
 				{
@@ -1487,9 +1511,41 @@ namespace std {
 		}
 
 		double volume(size_t cont) const {
-			Incremental i = f_rep(cont);
-			//return radial_volume_apx(i.faces, 1000);
-			return i.volume();
+			
+			Incremental inc = f_rep(cont);
+		/*size_t sed = seed();
+			while (inc.plane_count()>7) {
+				for (size_t i = 0; i < inc.plane_count(); i++)
+				{
+					Incremental unleashed;
+			
+					for (size_t u = 0;u < inc.plane_count();u++)
+					{
+
+						if (i != u)
+						{
+							unleashed.add(inc.faces.planes[u]);
+						}
+					}
+					try {
+						if (unleashed.faces.size()>40||bounded(unleashed.faces))
+						{
+							print("vol{}", unleashed.volume());
+						}
+					}
+					catch (std::logic_error& fail) {
+						if (unleashed.body())
+						{
+							inc = unleashed;
+						}
+					}
+				}
+				
+			}
+
+			print("points{}\nfaces{}", inc.points.points, inc.faces.planes);
+			*/
+			return inc.volume();
 		}
 
 	};
@@ -1519,12 +1575,30 @@ namespace std {
 
 		return cube;
 	}
+	void test_3d_micro_cluster_failure() {
+		std::vector<Vector> points = {
+			Vector({-4.0715805488172,     3.12477044164411,   -0.685762622210356}),
+			Vector({ 0.47260663030706,    2.09108820497028,   -1.42089973493547}),
+			Vector({ 2.6483251770572,     0.371189105956377,   0.727897650238536}),
+			Vector({-0.00544572097927758,-0.261263158616372, -0.272989611968719}), // Micro-pair A
+			Vector({-0.00544561832631156,-0.261263148637472, -0.272989643073816})  // Micro-pair B
+		};
+
+		Incremental hull;
+		for (size_t i = 0; i < points.size(); ++i) {
+			std::cout << "Inserting point [" << i << "]...\n";
+			
+			if (i==4)
+			{
+				int l = 4;
+			}
+			hull.add(points[i]);
+			
+		}
+	}
 	int main()
 	{
-		while (true) {
-			print("{}", seed());
-			print("{}",Sphere().volume(200));
-		}
+		print("vol{}",Sphere().volume(200));
 	}
 
 	// Run program: Ctrl + F5 or Debug > Start Without Debugging menu

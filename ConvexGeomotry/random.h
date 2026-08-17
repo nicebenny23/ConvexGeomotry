@@ -14,3 +14,4 @@
             std::cos(2.0 * std::numbers::pi * u2);
     }
     size_t seed();
+    void set_seed(size_t sed);
