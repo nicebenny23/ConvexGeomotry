@@ -147,7 +147,14 @@
     <ClCompile Include="random.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Frep.h" />
+    <ClInclude Include="gaussian_smitt.h" />
+    <ClInclude Include="half_space.h" />
+    <ClInclude Include="Incremental.h" />
     <ClInclude Include="random.h" />
+    <ClInclude Include="trivial_construction.h" />
+    <ClInclude Include="vector.h" />
+    <ClInclude Include="Vrep.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

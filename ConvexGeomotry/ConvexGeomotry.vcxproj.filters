@@ -26,5 +26,26 @@
     <ClInclude Include="random.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="vector.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="half_space.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="gaussian_smitt.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Vrep.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Frep.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="trivial_construction.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Incremental.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
