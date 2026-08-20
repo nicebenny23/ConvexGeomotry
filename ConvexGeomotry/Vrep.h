@@ -88,7 +88,7 @@ struct Vrep {
 		{
 			double eps = 1e-8;
 			double eps_squared = eps * eps;
-			if (vec_type::distance_squared(point, pnt) < eps_squared)
+			if (vec_type::distance_squared_le_than(point, pnt,eps_squared))
 			{
 				return;
 			}

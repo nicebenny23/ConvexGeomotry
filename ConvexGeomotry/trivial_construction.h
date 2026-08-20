@@ -131,6 +131,7 @@ bool bounded(Frep<Number> frep) {
 template<typename Number>
 std::optional<Vrep<Number>> to_vrep(const Frep< Number>& frep) {
 
+//	print("{}", frep.size());
 	if (!bounded(frep))
 	{
 		return std::nullopt;

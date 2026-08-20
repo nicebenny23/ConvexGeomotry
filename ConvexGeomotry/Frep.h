@@ -193,11 +193,11 @@ struct Frep {
 	size_t dim() const {
 		return planes.size() == 0 ? 0 : planes[0].dim();
 	}
-	std::vector<half_space_type> faces_on(const vec_type& point) const {
+	std::vector<half_space_type> faces_on(const vec_type& point,Number dist=1e-8) const {
 		std::vector<half_space_type> plane_list;
 		for (const half_space_type& space : planes)
 		{
-			if (space.suffieciently_close(point))
+			if (space.suffieciently_close(point,dist))
 			{
 				plane_list.push_back(space);
 			}

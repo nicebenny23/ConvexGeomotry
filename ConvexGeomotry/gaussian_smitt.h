@@ -78,6 +78,7 @@ inline std::optional<std::pair<std::vector<Vector<Number>>, Number>> gramm_shmit
 		}
 		else
 		{
+			//print("{}", vectors);
 			return std::nullopt;
 		}
 	}

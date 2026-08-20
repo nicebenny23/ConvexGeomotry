@@ -150,6 +150,7 @@
     <ClInclude Include="Frep.h" />
     <ClInclude Include="gaussian_smitt.h" />
     <ClInclude Include="half_space.h" />
+    <ClInclude Include="id.h" />
     <ClInclude Include="Incremental.h" />
     <ClInclude Include="random.h" />
     <ClInclude Include="trivial_construction.h" />

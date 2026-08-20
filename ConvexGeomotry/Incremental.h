@@ -1,381 +1,477 @@
 #include "trivial_construction.h"
+#include "id.h"
 #pragma once
 template<typename Number>
 Number sphere_sa(size_t n) {
 	return (pow(3.1415926, n / 2.0)) / tgamma(1 + (n / 2.0));
 }
 template<typename Number>
-Real radial_volume_apx(const Frep< Number>& frep, size_t amt) {
+Number radial_volume_apx(const Frep< Number>& frep, size_t amt) {
 	Vector< Number> pnt = frep.chebeshev_center();
 	Number value = 0;
 	for (size_t i = 0; i < amt; i++)
 	{
 		Ray< Number> look = Ray< Number>(pnt, Vector< Number>::random(pnt.dim()));
-		Real val = frep.hit_time(look).value();
+		Number val = frep.hit_time(look).value();
 		value += pow(val, frep.dim()) / amt;
 	}
 	value *= sphere_sa< Number>(frep.dim());
 	return value;
 }
 
-enum class polytope_degeneracy{
+enum class polytope_degeneracy {
 	Unbounded,
 	Hyperplanar,
 	Unconstructed,
 };
+struct face_marker {
+};
+using FacetID = stn::typed_id<face_marker>;
+struct point_marker {
+
+};
+using VertexId = stn::typed_id<point_marker>;
+
+template<typename Number>
+struct Facet {
+	bool operator==(const Facet& other) const {
+		return other.id == id;
+	}
+
+	Facet(FacetID id, HalfSpace<Number> pln) :id(id), plane(pln) {
+
+	}
+	FacetID id;
+	HalfSpace<Number> plane;
+	std::unordered_set<VertexId> vertices;
+	void add_vertex(VertexId vertex_id) {
+		vertices.emplace(vertex_id);
+	}
+	bool prunable() {
+		return vertices.size() == 0;
+	}
+
+	void erase_vertex(VertexId id) {
+		vertices.erase(id);
+	}
+};
+
+template<typename Number>
+struct Vertex {
+	bool operator==(const Vertex& other) const {
+		return other.id == id;
+	}
+	Vertex(VertexId id, Vector<Number> pnt) :id(id), point(pnt) {
+
+	}
+	VertexId id;
+	Vector<Number> point;
+	void add_face(FacetID facet_id) {
+		faces.emplace(facet_id);
+	}
+	std::unordered_set<FacetID> faces;
+	bool prunable() {
+		return faces.size() <= point.dim();
+	}
+	void erase_face(FacetID id) {
+		faces.erase(id);
+	}
+};
+
+template<typename T>
+struct std::hash<Vertex<T>> {
+	size_t operator()(Vertex<T> t) const noexcept {
+		return std::hash<VertexId>{}(t.id);
+	}
+};
+template<typename T>
+struct std::hash<Facet<T>> {
+	size_t operator()(Facet<T> t) const noexcept {
+		return std::hash<FacetID>{}(t.id);
+	}
+};
+
 template<typename Number>
 struct Incremental {
 	size_t plane_count() const {
 
-		return faces.size();
+		return facets.size();
 	}
 
 	using vec_type = Vector<Number>;
 	using half_space_type = HalfSpace<Number>;
+	using vertex_type = Vertex<Number>;
 
+	using facet_type = Facet<Number>;
 	using frep_type = Frep<Number>;
 	using vrep_type = Vrep<Number>;
-	std::optional<polytope_degeneracy> degeneracy=polytope_degeneracy::Unconstructed;
-	vrep_type points;
-	frep_type faces;
+	std::unordered_map<VertexId, Vertex<Number>> vertices;
+
+	std::unordered_map<FacetID, Facet<Number>> facets;
+	std::optional<polytope_degeneracy> degeneracy = polytope_degeneracy::Unconstructed;
+	size_t face_counter;
+	size_t vertex_counter;
+	std::optional<VertexId> insert_vertex_id(const Vector<Number>& v) {
+		for (auto& vertex:vertices)
+		{
+			if (vec_type::distance_squared_le_than(vertex.second.point, v, 1e-12))
+			{
+				return std::nullopt;
+			}
+
+		}
+		VertexId id = VertexId(vertex_counter++);
+		vertices.emplace(id, Vertex<Number>(id, v));
+		return id;
+	}
+	std::optional<FacetID> insert_facet_id(const HalfSpace<Number>& h) {
+		for (const auto& face_t: facets)
+		{
+			const facet_type& face = face_t.second;
+			Number angle = vec_type::dot_product(face.plane.normal, h.normal);
+			if (abs(angle - 1) <= 1e-8 &&abs(face.plane.bound - h.bound) <= 1e-8)
+			{
+				return std::nullopt;
+			}
+		}
+		FacetID id = FacetID(face_counter++);
+		facets.emplace(id, Facet<Number>(id, h));
+		return id;
+	}
 	size_t dim() {
-		return std::max(points.dim(), faces.dim());
+		return std::max<size_t>(0, facets.begin()->second.plane.dim());
 	}
 	bool body() {
-		return degeneracy==std::nullopt;
+		return degeneracy == std::nullopt;
 
 	}
-	void well_defined_invariant() {
-		for (const half_space_type& space : faces)
+	bool contains(const vec_type& point, double eps = 1e-8) const {
+		for (auto& u : facets)
 		{
-			if (!points.is_neccesary_supporting_hyperplane(space)) {
-
-				print("points{},\nface{}", points.points, space);
-
-				print("{}", points.points_on(space));
-				points.is_neccesary_supporting_hyperplane(space);
-
-				throw std::logic_error("all planes must be supporting");
-			}
-		}
-		for (const vec_type& point : points)
-		{
-			if (!faces.corner(point))
+			if (!u.second.plane.contains(point, eps))
 			{
-				throw std::logic_error("all points must be on the boundry");
+				return false;
 			}
 		}
-	}
-	bool contains(const vec_type& point,double eps=1e-8) const {
-		return faces.contains(point,eps);
+		return true;
 	}
 	bool contained_in(const half_space_type& space, double eps = 1e-8) const {
-		return points.contained_in(space,eps);
-	}
-	void add(const half_space_type& space) {
-
-		if (!body())
+		for (auto& u : vertices)
 		{
-			
-			faces.add(space);
-
-			points = to_vrep(faces).value_or(points);
-
-			if (points.size()!=0)
+			if (!space.contains(u.second.point, eps))
 			{
-				degeneracy = std::nullopt;
-				faces = to_frep(points).value();
+				return false;
+			}
+		}
+		return true;
+	}
+	void remove_vertex_connections(VertexId id) {
+		vertex_type& v = vertices.at(id);
+		for (FacetID face_id : v.faces)
+		{
+			facets.at(face_id).vertices.erase(id);
+		}
+	}
+	void remove_facet_connections(FacetID id) {
+		facet_type& f = facets.at(id);
+		for (VertexId vertice : f.vertices)
+		{
+			vertices.at(vertice).faces.erase(id);
+		}
+	}
+
+	void prune_facets() {
+		std::unordered_map<FacetID, Facet<Number>> facets_kept;
+		for (auto& f : facets)
+		{
+			if (!f.second.prunable())
+			{
+				facets_kept.emplace(f.first, f.second);
 			}
 			else {
-				degeneracy = polytope_degeneracy::Unbounded;
+				remove_facet_connections(f.second.id);
+
 			}
+		}
+
+		facets = facets_kept;
+	}
+
+	void prune_vertices() {
+		std::unordered_map<VertexId, Vertex<Number>> vertices_kept;
+		for (auto& v: vertices)
+		{
+			if (!v.second.prunable())
+			{
+				vertices_kept.emplace(v.first, v.second);
+			}
+			else {
+				remove_vertex_connections(v.second.id);
+			}
+		}
+
+		vertices= vertices_kept;
+
+	}
+	Frep<Number> into_frep() {
+
+		Frep<Number> faces;
+		for (auto& u : facets)
+		{
+			faces.add(u.second.plane);
+		}
+		return faces;
+	}
+	
+
+	Vrep<Number> into_vrep() {
+
+		Vrep<Number> points;
+		for (auto& u : vertices)
+		{
+			points.add(u.second.point);
+		}
+		return points;
+	}void add(const half_space_type& new_space) {
+
+		auto new_id_opt = insert_facet_id(new_space);
+		if (!new_id_opt)
+		{
 			return;
 		}
-		if (contained_in(space,1e-6)) {
-			return;
-		}
-		vrep_type in;
-		vrep_type out;
-		for (const vec_type& v : points)
+		FacetID new_id = new_id_opt.value();
+		if (degeneracy != std::nullopt)
 		{
-			if (space.contains(v))
-			{
-				in.add_unchecked(v);
-			}
-			else
-			{
-				out.add_unchecked(v);
-			}
-		}
-		points = in;
-		for (const vec_type& lost : out)
-		{
-			auto p1 = faces.faces_on(lost);
-			for (const vec_type& kept : in)
+			if (bounded(into_frep()))
 			{
 
-				std::vector<half_space_type> ihl;
-				for (const half_space_type& face : p1)
-				{
-					if (face.suffieciently_close(kept))
+				auto combination_list = combinations(facets.size(), dim());
+				for (std::vector<size_t> facet_id_list : combination_list) {
+					std::vector<HalfSpace<Number>> half_spaces;
+					for (size_t u : facet_id_list)
 					{
-						ihl.push_back(face);
+						half_spaces.push_back(facets.at(FacetID(u)).plane);
+					}
+					auto pnt = GaussianMatrix(half_spaces).solve();
+					if (pnt && contains(pnt.value()))
+					{
+						auto vertex_id_opt = insert_vertex_id(pnt.value());
+						if (!vertex_id_opt)
+						{
+							continue;
+						}
+						auto vertex_id = vertex_id_opt.value();
+						for (size_t facet_indices : facet_id_list)
+						{
+							vertices.at(vertex_id).add_face(FacetID(facet_indices));
+							facets.at(FacetID(facet_indices)).add_vertex(vertex_id);
+						}
+
 					}
 				}
-				if (ihl.size() >= dim() - 1)
-				{
-					if (ihl.size() >= dim())
-					{
-						ihl.erase(ihl.begin() + dim() - 1, ihl.end());
+				degeneracy = std::nullopt;
+			}
+			return;
+		}
+		std::unordered_set<Vertex<Number>> out;
+		for (const auto& v : vertices)
+		{
+			if (!new_space.contains(v.second.point))
+			{
+				remove_vertex_connections(v.second.id);
+				out.emplace(v.second);
+			}
+		}
 
-					}
-					ihl.push_back(space);
-					std::optional<vec_type> pnt = GaussianMatrix(ihl).solve();
-					if (!pnt)
+		for (const Vertex<Number>& lost : out)
+		{
+			std::unordered_set<VertexId> potential_incidences;
+			for (FacetID u : lost.faces)
+			{
+				//only kept are still in
+				potential_incidences.insert_range(facets.at(u).vertices);
+			}
+			for (VertexId vertex_id : potential_incidences)
+			{
+
+				std::vector<FacetID> faces_in_both;
+
+				vertex_type& vertex = vertices.at(vertex_id);
+				faces_in_both.push_back(new_id);
+				for (FacetID face_id : lost.faces)
+				{
+					if (vertex.faces.contains(face_id))
 					{
-						continue;
+						faces_in_both.push_back(face_id);
 					}
-					if (!contains(pnt.value()))
+				}
+				if (faces_in_both.size() >= dim())
+				{
+					std::vector<HalfSpace<Number>> face_vector_in_both;
+					for (FacetID id : faces_in_both)
 					{
-						throw std::logic_error("point must be contained");
-					}
-					points.add(pnt.value());
-					for (const half_space_type& s : ihl)
-					{
-						if (!s.suffieciently_close(pnt.value()))
+						if (face_vector_in_both.size() < dim())
 						{
-							throw std::logic_error("error");
+							face_vector_in_both.push_back(facets.at(id).plane);
 						}
 					}
-					for (const half_space_type& h : ihl) {
-						Number dist = abs(vec_type::dot_product(h.normal, *pnt) - h.bound);
+					std::optional<vec_type> pnt = GaussianMatrix(face_vector_in_both).solve();
+					if (pnt)
+					{
+						auto vertex_id_opt = insert_vertex_id(pnt.value());
+						if (!vertex_id_opt)
+						{
+							continue;
+						}
+						auto new_vertex_id = vertex_id_opt.value();
+						vertices.at(new_vertex_id).faces = std::unordered_set<FacetID>{ faces_in_both.begin(),faces_in_both.end() };
+						for (FacetID touching : faces_in_both)
+						{
+							facets.at(touching).vertices.emplace(new_vertex_id);
+						}
+					}
+				}
+
+			}
+		}
+		for (Vertex v : out)
+		{
+			vertices.erase(v.id);
+		}
+		prune_facets();
+		if (facets.size() <= dim())
+		{
+
+			degeneracy = polytope_degeneracy::Unbounded;
+		}
+	}
+
+	void add(const vec_type& new_vertex) {
+
+		auto new_id_opt = insert_vertex_id(new_vertex);
+		if (!new_id_opt)
+		{
+			return;
+		}
+		VertexId new_id = new_id_opt.value();
+		if (degeneracy != std::nullopt)
+		{
+			if (into_vrep().full_span())
+			{
+
+				auto combination_list = combinations(vertices.size(), dim());
+				for (std::vector<size_t> vertex_id_list : combination_list) {
+					std::vector<vec_type> points;
+					for (size_t ind : vertex_id_list)
+					{
+						points.push_back(vertices.at(VertexId(ind)).point);
+					}
+					auto face= space_from_vectors(points);
+					if (face && contained_in(face.value()))
+					{
+						auto face_id_opt=insert_facet_id(face.value());
+						if (!face_id_opt)
+						{
+							continue;
+						}
+						auto face_id = face_id_opt.value();
+						for (size_t vertex_indices : vertex_id_list)
+						{
+							facets.at(face_id).add_vertex(VertexId(vertex_indices));
+							vertices.at(VertexId(vertex_indices)).add_face(face_id);
+						}
 
 					}
 				}
-			}
-		}
-		faces.add(space);
-		if (points.size()==0) {
-			return;
-		}
-		if (points.contains_all(space) && points.contains_all(-space)) {
-			degeneracy = polytope_degeneracy::Hyperplanar;
-			faces = Frep<Number>();
-			return;
-		}
-
-		
-		frep_type kept_faces;
-		for (const half_space_type& space : faces)
-		{
-			//only check those at risk;
-			if (out.is_supporting_hyperplane(space))
-			{
-				if (!points.is_neccesary_supporting_hyperplane(space))
-				{
-					
-					continue;
-				}
-			}
-			kept_faces.add_unchecked(space);
-		}
-		
-		faces = kept_faces;
-	}
-
-	void add(const vec_type& point) {
-		if (!body())
-		{
-			if (degeneracy == polytope_degeneracy::Unbounded)
-			{
-				throw std::logic_error("cannot add plane while unbounded");
-			}
-			points.add(point);
-			faces = to_frep(points).value_or(frep_type());
-			if (faces.size()!=0)
-			{
 				degeneracy = std::nullopt;
-				points = to_vrep(faces).value_or(points);
-
 			}
-			else {
-				degeneracy = polytope_degeneracy::Hyperplanar;
-			}
-		}
-
-		if (contains(point,1e-6)) {
 			return;
 		}
-
-		frep_type contained;
-		frep_type lost_rep;
-		for (const half_space_type& space : faces.planes)
+		std::unordered_set<facet_type> out;
+		for (const auto& f: facets)
 		{
-			if (space.contains(point))
+			if (!f.second.plane.contains(new_vertex))
 			{
-
-				contained.add(space);
-			}
-			else
-			{
-				lost_rep.add(space);
+				remove_facet_connections(f.second.id);
+				out.emplace(f.second);
 			}
 		}
 
-		faces = contained;
-		std::vector<vec_type> new_points;
-		std::vector<vec_type> rip;
-
-		for (const half_space_type& lost : lost_rep.planes)
+		for (const facet_type& lost : out)
 		{
-
-			auto p1 = points.points_on(lost);
-
-			for (const half_space_type& kept : contained.planes)
+			std::unordered_set<FacetID> potential_incidences;
+			for (VertexId u : lost.vertices)
 			{
+				//only kept are still in
+				potential_incidences.insert_range(vertices.at(u).faces);
+			}
+			for (FacetID facet_id : potential_incidences)
+			{
+				std::vector<VertexId> points_in_both;
 
-
-				std::vector<vec_type> f_p;
-				for (const vec_type& point_in : p1)
+				facet_type& face= facets.at(facet_id);
+				points_in_both.push_back(new_id);
+				for (VertexId vertex_id : lost.vertices)
 				{
-					if (kept.suffieciently_close(point_in))
+					if (face.vertices.contains(vertex_id))
 					{
-						f_p.push_back(point_in);
+						points_in_both.push_back(vertex_id);
 					}
 				}
-				if (f_p.size() >= dim() - 1)
+				if (points_in_both.size() >= dim())
 				{
-					if (f_p.size() >= dim())
+					std::vector<Vector<Number>> point_vector_in_both;
+					for (VertexId id : points_in_both)
 					{
-						f_p.erase(f_p.begin() + dim() - 1, f_p.end());
-
+						if (point_vector_in_both.size() < dim())
+						{
+							point_vector_in_both.push_back(vertices.at(id).point);
+						}
 					}
-
-					f_p.push_back(point);
-
-					auto new_space = space_from_vectors(f_p);
-
-					bool ss = false;
-					if (new_space)
+					std::optional<half_space_type> space= space_from_vectors(point_vector_in_both);
+					if (space)
 					{
-						auto space = new_space.value();
-						
-						
-						add_face_trivial(space);
-					}
-					else {
-						int l = 4;
+						auto facet_id_opt = insert_facet_id(space.value());
+						if (!facet_id_opt)
+						{
+							continue;
+						}
+						auto new_facet_id = facet_id_opt.value();
+						facets.at(new_facet_id).vertices= std::unordered_set<VertexId>{ points_in_both.begin(),points_in_both.end() };
+						for (VertexId touching : points_in_both)
+						{
+							vertices.at(touching).add_face(new_facet_id);
+						}
 					}
 				}
+
 			}
 		}
-		points.add(point);
-		vrep_type kept_points;
-		vrep_type lost_points;
-		for (const vec_type& pnt : points)
+		for (Facet f : out)
 		{
-			if (lost_rep.boundry(pnt))
-			{
-				if (!faces.corner(pnt))
-				{
-					lost_points.add_unchecked(pnt);
-					continue;
-				}
-			}
-			kept_points.add_unchecked(pnt);
-
+			facets.erase(f.id);
 		}
-
-		points = kept_points;
-
+		prune_facets();
+		
 	}
-	void add_face_trivial(half_space_type space)
-	{
-		if (!points.contains_all(space))
-		{
-			space = -space;
-		}
+	
 
-		if (!points.contains_all(space))
-		{
-			print("points{}\n faces{}", points.points, faces.planes);
-			print("generators{}", points.points_on(space));
-			print("{}", space);
-
-			// First: test using the existing Number-space.
-			for (const vec_type& v : points)
-			{
-				Number fake_residual = (-space).signed_dist(v);
-
-				if (fake_residual > Number(1e-8))
-				{
-					print("point = {}", v);
-					auto on = points.points_on(space);
-					if (on.size()>=dim())
-					{
-
-						// Reconstruct the plane from the points in Real.
-						std::vector<Vector<Real>> real_generators{ on.begin(),on.end() };
-						auto fake_again = HalfSpace<Real>(space);
-						auto real_space = space_from_vectors(real_generators).value();
-						Vector<Real> real_point(v);
-						Real real_residual = fake_again.signed_dist(real_point);
-						print("REAL signed residual = {:.15e}", real_residual);
-
-					}
-				}
-			}
-
-			throw std::logic_error("how");
-		}
-
-		faces.add(space);
-	}
 	Number support(const vec_type& direction) const {
-		return points.support(direction);
+
+		Number spt = -std::numeric_limits<Number>().infinity();
+		for (const auto& v : vertices)
+		{
+			spt = std::max(spt, vec_type::dot_product(direction, v.second.point));
+		}
+		return spt;
 	}
-	static std::optional<Incremental> try_build(vrep_type point_list) {
-		Incremental built;
-		if (point_list.dim() == 0)
-		{
-			return Incremental{};
-
-		}
-		if (point_list.size() <= point_list.dim())
-		{
-			throw std::logic_error("no sub simplexes");
-		}
-		for (vec_type pnt : point_list)
-		{
-			built.add(pnt);
-		}
-		return built;
-	}static std::optional<Incremental> try_build(const frep_type& plane_list) {
-		Incremental built;
-		if (plane_list.dim() == 0)
-		{
-			return Incremental{};
-
-		}
-		if (plane_list.size() <= plane_list.dim())
-		{
-			throw std::logic_error("no sub simplexes");
-		}
-		for (half_space_type plane : plane_list)
-		{
-			built.add(plane);
-		}
-		return built;
-	}
-
 	Number volume() {
 
-		well_defined_invariant();
-		if (dim()==0)
+		if (dim() == 0)
 		{
 			return 1;
 		}
-		if (degeneracy==polytope_degeneracy::Hyperplanar)
+		if (degeneracy == polytope_degeneracy::Hyperplanar)
 		{
 			return 0;
 		}
@@ -383,10 +479,11 @@ struct Incremental {
 		{
 			return 0;
 		}
-		if (degeneracy==polytope_degeneracy::Unbounded)
+		if (degeneracy == polytope_degeneracy::Unbounded)
 		{
 			return std::numeric_limits<Number>().infinity();
 		}
+		/*
 		vec_type center = points.point_in();
 
 		Number volume = 0;
@@ -412,7 +509,7 @@ struct Incremental {
 			}
 		}
 
-		well_defined_invariant();
 		return volume;
+	*/
 	}
 };

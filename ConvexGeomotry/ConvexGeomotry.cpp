@@ -6,16 +6,23 @@ using CommonType = double;
 		HalfSpace<CommonType> half_space_from(const Vector<CommonType>& amt) const {
 			return HalfSpace<CommonType>(amt, this->operator()(amt));
 		}
-	
-		Incremental<CommonType> f_rep(size_t size) const {
+		Frep<CommonType> frep(size_t size) const {
+			Frep<CommonType> f{};
+
+			while (f.size()< size)
+			{
+				f.add(half_space_from(Vector<CommonType>::random(dim())));
+			}
+			return f;
+		}
+		Incremental<CommonType> incremental_rep(size_t size) const {
 			Incremental<CommonType> p{};
 
 
-			while (p.plane_count() < size)
+			while (p.facets.size()< size)
 			{
 				std::vector<Vector<CommonType>> unique_candidates;
 				size_t unique_direction_count = 10;
-				// Layer 1: create 20 diverse candidates
 				while (unique_candidates.size() < unique_direction_count)
 				{
 					unique_candidates.push_back(Vector<CommonType>::random(dim()));
@@ -53,7 +60,8 @@ using CommonType = double;
 
 		CommonType volume(size_t cont) const {
 			
-			Incremental<CommonType> inc = f_rep(cont);
+			Incremental<CommonType> inc = incremental_rep(cont);
+			return radial_volume_apx(inc.into_frep(), 10000);
 		/*	size_t sed = seed();
 			while (inc.plane_count()>7) {
 				for (size_t i = 0; i < inc.plane_count(); i++)
@@ -91,7 +99,7 @@ using CommonType = double;
 
 	};
 	struct Sphere :SupportFunction {
-		size_t dimention =4;
+		size_t dimention =6;
 		size_t dim() const {
 			return dimention;
 		}
@@ -134,17 +142,12 @@ using CommonType = double;
 				int l = 4;
 			}
 			hull.add(points[i]);
-		print("vertices{}", hull.points.points);
-		print("faces{}", hull.faces.planes);
 			
 		}
 	}
 	int main()
 	{
-		test_3d_micro_cluster_failure();
-		while (true) {
-			print("vol{}", Sphere().volume(10));
-		}
+			print("vol{}", Sphere().volume(200));
 	}
 
 	// Run program: Ctrl + F5 or Debug > Start Without Debugging menu

@@ -107,11 +107,30 @@ struct Vector {
 
 	}
 	static Number distance(const Vector& a, const Vector& b) {
-		return (a - b).magnitude();
+		return sqrt(Vector::distance_squared(a,b));
+	}
+
+	static bool distance_squared_le_than(const Vector& a, const Vector& b,Number min) {
+		Number dist = 0;
+		for (int i = 0; i < a.dim(); i++)
+		{
+			Number offset = a[i] - b[i];
+			dist += offset * offset;
+			if (dist>=min)
+			{
+				return false;
+			}
+		}
+		return true;
 	}
 	static Number distance_squared(const Vector& a, const Vector& b) {
-		return (a - b).magnitude_squared();
-
+		Number dist = 0;
+		for (int i = 0; i < a.dim(); i++)
+		{
+			Number offset = a[i] - b[i];
+			dist += offset*offset;
+		}
+		return dist;
 	}
 	Number magnitude() const {
 
